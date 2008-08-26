@@ -382,7 +382,9 @@ getDirectoryContentsRecursive path = do
        contents <- getDirectoryContents path
        let contents' = map (path </>) $ filter (`notElem` ["..","."]) contents
        children <- mapM getDirectoryContentsRecursive contents'
-       return (path : concat children)
+       if path == "."
+          then return (concat children)
+          else return (path : concat children)
      else return [path]
 
 setFileTimeStamp :: FilePath -> MSDOSDateTime -> IO ()
