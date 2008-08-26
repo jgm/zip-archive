@@ -40,7 +40,7 @@ module Codec.Archive.Zip
        , emptyZipArchive
        , defaultZipEntry
 
-       -- * Functions for working with 'ZipArchive' structures
+       -- * Functions for working with zip archives
        , toZipArchive
        , fromZipArchive
        , readZipArchive
@@ -49,7 +49,7 @@ module Codec.Archive.Zip
        , addEntryToZipArchive
        , deleteEntryFromZipArchive
 
-       -- * Functions for working with 'ZipEntry' structures
+       -- * Functions for working with zip entries
        , findZipEntryByPath
        , contentsOfZipEntry
        , readZipEntry
@@ -59,7 +59,7 @@ module Codec.Archive.Zip
        , compressData
        , decompressData
 
-       -- * IO functions for adding files to and extracting files from a 'ZipArchive'
+       -- * IO functions for adding files to and extracting files from a zip archive
        , addFilesToZipArchive
        , extractFilesFromZipArchive
 
