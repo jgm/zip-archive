@@ -214,23 +214,26 @@ readZipEntry path = do
                          then return B.empty
                          else B.readFile path
   let uncompressedSize = B.length uncompressedData
-  let compressionMethod = if uncompressedSize < 30
-                             then NoCompression
-                             else Deflate
-  let compressedData = compressData compressionMethod uncompressedData
+  let compressedData = compressData Deflate uncompressedData
+  let compressedSize = B.length compressedData
+  -- only use compression if it helps!
+  let (compressionMethod, finalData, finalSize) =
+        if uncompressedSize <= compressedSize
+           then (NoCompression, uncompressedData, uncompressedSize)
+           else (Deflate, compressedData, compressedSize)
   lastModDateTime <- getModificationTime path >>= return . clockTimeToMSDOSDateTime
   let crc32 = CRC32.calc_crc32 $ map w2c $ B.unpack uncompressedData
   return $ ZipEntry { eRelativePath            = path'
                     , eCompressionMethod       = compressionMethod
                     , eLastModified            = lastModDateTime
                     , eCRC32                   = crc32
-                    , eCompressedSize          = fromIntegral $ B.length compressedData
-                    , eUncompressedSize        = fromIntegral $ uncompressedSize
+                    , eCompressedSize          = fromIntegral finalSize
+                    , eUncompressedSize        = fromIntegral uncompressedSize
                     , eExtraField              = B.empty
                     , eFileComment             = B.empty
                     , eInternalFileAttributes  = 0  -- potentially non-text
                     , eExternalFileAttributes  = 0  -- appropriate if from stdin
-                    , eCompressedData          = compressedData
+                    , eCompressedData          = finalData
                     }
 
 -- | Writes contents of a 'ZipEntry' to a file.
