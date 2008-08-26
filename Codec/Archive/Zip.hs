@@ -36,7 +36,7 @@ module Codec.Archive.Zip
          ZipArchive (..)
        , ZipEntry (..)
        , CompressionMethod (..)
-       , ZipOptions (..)
+       , ZipOption (..)
        , emptyZipArchive
        , defaultZipEntry
 
@@ -133,7 +133,7 @@ data CompressionMethod = Deflate
                        deriving (Read, Show, Eq)
 
 -- | Options for 'addFilesToZipArchive' and 'extractFilesFromZipArchive'.
-data ZipOptions = OptRecursive | OptVerbose deriving (Read, Show, Eq)
+data ZipOption = OptRecursive | OptVerbose deriving (Read, Show, Eq)
 
 -- | A zip archive with no contents.
 emptyZipArchive :: ZipArchive
@@ -253,7 +253,7 @@ decompressData NoCompression = id
 -- | Add the specified files to a 'ZipArchive'.  If 'OptRecursive' is specified,
 -- recursively add files contained in directories.  If 'OptVerbose' is specified,
 -- print messages to stderr.
-addFilesToZipArchive :: [ZipOptions] -> ZipArchive -> [FilePath] -> IO ZipArchive
+addFilesToZipArchive :: [ZipOption] -> ZipArchive -> [FilePath] -> IO ZipArchive
 addFilesToZipArchive opts archive files = do
   filesAndChildren <- if OptRecursive `elem` opts
                          then mapM getDirectoryContentsRecursive files >>= return . nub . concat
@@ -274,7 +274,7 @@ addFilesToZipArchive opts archive files = do
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
 -- Note that last modified times are supported only for POSIX, not for
 -- Windows.
-extractFilesFromZipArchive :: [ZipOptions] -> ZipArchive -> IO ()
+extractFilesFromZipArchive :: [ZipOption] -> ZipArchive -> IO ()
 extractFilesFromZipArchive opts archive = do
   let entries = zEntries archive
   let writeEntry' e = do let path = eRelativePath e
