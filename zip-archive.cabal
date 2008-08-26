@@ -1,0 +1,44 @@
+Name:                zip-archive
+Version:             0.0
+Cabal-version:       >= 1.2
+Build-type:          Simple
+Synopsis:            Library for creating and modifying zip archives.
+Description:         The zip-archive library provides functions for creating, modifying,
+                     and extracting files from zip archives.
+Category:            Codec
+License:             GPL
+License-file:        LICENSE
+Author:              John MacFarlane
+Maintainer:          jgm@berkeley.edu
+Build-Depends:       base
+Extra-Source-Files:  Tests.hs, COPYING, Data/Hash/CRC32/GZip.hs
+
+flag splitBase
+  Description:       Choose the new, smaller, split-up base package.
+  Default:           True
+flag executable
+  Description:       Build the Zip executable.
+  Default:           False
+
+Library 
+  if flag(splitBase)
+    Build-depends:   base >= 3, pretty, containers
+  else
+    Build-depends:   base < 3
+  Build-depends:     binary, zlib, filepath, directory, bytestring >= 0.9.0, array, mtl, utf8-string, old-time
+  Exposed-modules:   Codec.Archive.Zip
+  Hs-Source-Dirs:    .
+  Ghc-Options:       -Wall
+  Extensions:        CPP
+  if os(windows)
+    cpp-options:     -D_WINDOWS
+  else
+    Build-depends:   unix
+
+Executable Zip
+  if flag(executable)
+    Buildable:       True
+  else
+    Buildable:       False
+  Main-is:           Zip.hs
+  Ghc-Options:       -Wall
