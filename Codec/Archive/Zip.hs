@@ -104,7 +104,7 @@ data ZipArchive = ZipArchive
                 { zEntries                :: [ZipEntry]           -- ^ files in zip archive
                 , zSignature              :: Maybe B.ByteString   -- ^ digital signature
                 , zComment                :: B.ByteString         -- ^ comment for whole zip archive
-                } deriving (Read, Show, Eq)
+                } deriving (Read, Show)
 
 -- | Representation of an archived file, including content and metadata.
 data ZipEntry = ZipEntry
