@@ -9,13 +9,19 @@ import System.Time
 import System.Process
 import qualified Data.ByteString.Lazy as B
 
+-- define equality for ZipArchives so timestamps aren't distinguished if they
+-- correspond to the same MSDOS datetime.
+instance Eq ZipArchive where
+  (==) a1 a2 =  zSignature a1 == zSignature a2
+             && zComment a1 == zComment a2
+             && (all id $ zipWith (\x y -> x { eLastModified = eLastModified x `div` 2  } ==
+                                           y { eLastModified = eLastModified y `div` 2  }) (zEntries a1) (zEntries a2))
+
 main :: IO Counts
 main = do
   createDirectory "test-temp"
   counts <- runTestTT $ TestList [ 
                                    testReadWriteArchive
-                                 , testClockDosClock
-                                 , testDosClockDos
                                  , testReadExternalZip
                                  , testFromToZipArchive
                                  , testReadWriteZipEntry
@@ -31,18 +37,7 @@ testReadWriteArchive = TestCase $ do
   writeZipArchive "test-temp/test1.zip" archive
   archive' <- readZipArchive "test-temp/test1.zip"
   assertEqual "for writing and reading test1.zip" archive archive'
-
-testClockDosClock = TestCase $ do
-  let curtime = TOD 1219648332 0 -- no picoseconds, and no odd numbers of seconds, bc dos times don't represent them
-  let dostime = clockTimeToMSDOSDateTime curtime
-  let curtime' = msDOSDateTimeToClockTime dostime
-  assertEqual "for clockTime -> dos time -> clockTime" curtime curtime'
-
-testDosClockDos = TestCase $ do
-  let dostime = MSDOSDateTime { msDOSDate = fromIntegral 14223, msDOSTime = fromIntegral 23334 }
-  let clocktime = msDOSDateTimeToClockTime dostime
-  let dostime' = clockTimeToMSDOSDateTime clocktime
-  assertEqual "for dos time -> clockTime -> dos time" dostime dostime' 
+  assertEqual "for writing and reading test1.zip" archive archive'
 
 testReadExternalZip = TestCase $ do
   runCommand "zip -q -9 test-temp/test4.zip zip-archive.cabal Codec/Archive/Zip.hs" >>= waitForProcess
