@@ -63,15 +63,9 @@ module Codec.Archive.Zip
        , addFilesToZipArchive
        , extractFilesFromZipArchive
 
-       -- * Conversion of MSDOS datetime used in zip archives
-       , MSDOSDateTime (..)
-       , clockTimeToMSDOSDateTime
-       , msDOSDateTimeToClockTime
-
        ) where
 
-import System.Time ( toUTCTime, toClockTime, addToClockTime,
-                     CalendarTime (..), ClockTime (..), TimeDiff (..), Day (..), Month (..) )
+import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..), TimeDiff (..) )
 import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
@@ -116,7 +110,7 @@ data ZipArchive = ZipArchive
 data ZipEntry = ZipEntry
                { eRelativePath            :: FilePath            -- ^ relative path, using '/' as separator
                , eCompressionMethod       :: CompressionMethod   -- ^ compression method
-               , eLastModified            :: MSDOSDateTime       -- ^ date and time last modified
+               , eLastModified            :: Integer             -- ^ modification time (seconds since unix epoch)
                , eCRC32                   :: Word32              -- ^ crc32 checksum
                , eCompressedSize          :: Word32              -- ^ compressed size in bytes
                , eUncompressedSize        :: Word32              -- ^ uncompressed size in bytes
@@ -147,7 +141,7 @@ defaultZipEntry :: ZipEntry
 defaultZipEntry = ZipEntry
                  { eRelativePath            = ""
                  , eCompressionMethod       = Deflate
-                 , eLastModified            = clockTimeToMSDOSDateTime (toClockTime epoch)
+                 , eLastModified            = 0
                  , eCRC32                   = 0
                  , eCompressedSize          = 0
                  , eUncompressedSize        = 0
@@ -221,11 +215,11 @@ readZipEntry path = do
         if uncompressedSize <= compressedSize
            then (NoCompression, uncompressedData, uncompressedSize)
            else (Deflate, compressedData, compressedSize)
-  lastModDateTime <- getModificationTime path >>= return . clockTimeToMSDOSDateTime
+  (TOD modEpochTime _) <- getModificationTime path
   let crc32 = CRC32.calc_crc32 $ map w2c $ B.unpack uncompressedData
   return $ ZipEntry { eRelativePath            = path'
                     , eCompressionMethod       = compressionMethod
-                    , eLastModified            = lastModDateTime
+                    , eLastModified            = modEpochTime
                     , eCRC32                   = crc32
                     , eCompressedSize          = fromIntegral finalSize
                     , eUncompressedSize        = fromIntegral uncompressedSize
@@ -299,52 +293,6 @@ extractFilesFromZipArchive opts archive = do
                          setFileTimeStamp path (eLastModified e)
   mapM_ writeEntry' entries
 
--- | MSDOS datetime: a pair of Word16s (date, time) with the following structure:
---
--- > DATE bit     0 - 4           5 - 8           9 - 15
--- >      value   day (1 - 31)    month (1 - 12)  years from 1980
--- > TIME bit     0 - 4           5 - 10          11 - 15
--- >      value   seconds*        minute          hour
--- >              *stored in two-second increments
---
-data MSDOSDateTime = MSDOSDateTime { msDOSDate :: Word16
-                                   , msDOSTime :: Word16
-                                   } deriving (Read, Show, Eq)
-
--- | Convert a clock time to a MSDOS datetime.  The MSDOS time will be relative to UTC.
-clockTimeToMSDOSDateTime :: ClockTime -> MSDOSDateTime
-clockTimeToMSDOSDateTime clocktime =
-  let ut = toUTCTime clocktime
-      dosTime = toEnum $ (ctSec ut `div` 2) + shiftL (ctMin ut) 5 + shiftL (ctHour ut) 11
-      dosDate = toEnum $ ctDay ut + shiftL (fromEnum (ctMonth ut) + 1) 5 + shiftL (ctYear ut - 1980) 9
-  in  MSDOSDateTime { msDOSDate = dosDate, msDOSTime = dosTime }
-
--- | Convert a MSDOS datetime to a 'ClockTime'.
-msDOSDateTimeToClockTime :: MSDOSDateTime -> ClockTime
-msDOSDateTimeToClockTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTime}) =
-  let seconds = fromIntegral $ 2 * (dosTime .&. 0O37)
-      minutes = fromIntegral $ (shiftR dosTime 5) .&. 0O77
-      hour    = fromIntegral $ shiftR dosTime 11
-      day     = fromIntegral $ dosDate .&. 0O37
-      month   = fromIntegral $ ((shiftR dosDate 5) .&. 0O17) - 1
-      year    = fromIntegral $ shiftR dosDate 9
-      timeSinceEpoch = TimeDiff
-               { tdYear = year + 10, -- dos times since 1980, unix epoch starts 1970
-                 tdMonth = month,
-                 tdDay = day - 1,  -- dos days start from 1
-                 tdHour = hour,
-                 tdMin = minutes,
-                 tdSec = seconds,
-                 tdPicosec = 0 }
-  in  addToClockTime timeSinceEpoch (toClockTime epoch)
-
--- | The beginning of the unix epoch.
-epoch :: CalendarTime
-epoch = CalendarTime { ctYear = 1970, ctMonth = January, ctDay = 1,
-                       ctHour = 0, ctMin = 0, ctSec = 0,
-                       ctPicosec = 0, ctWDay = Thursday, ctYDay = 0,
-                       ctTZName = "UTC", ctTZ = 0, ctIsDST = False}
-
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
 
@@ -374,6 +322,46 @@ compressionRatio entry =
      then 1
      else fromIntegral (eCompressedSize entry) / fromIntegral (eUncompressedSize entry)
 
+-- | MSDOS datetime: a pair of Word16s (date, time) with the following structure:
+--
+-- > DATE bit     0 - 4           5 - 8           9 - 15
+-- >      value   day (1 - 31)    month (1 - 12)  years from 1980
+-- > TIME bit     0 - 4           5 - 10          11 - 15
+-- >      value   seconds*        minute          hour
+-- >              *stored in two-second increments
+--
+data MSDOSDateTime = MSDOSDateTime { msDOSDate :: Word16
+                                   , msDOSTime :: Word16
+                                   } deriving (Read, Show, Eq)
+
+-- | Convert a clock time to a MSDOS datetime.  The MSDOS time will be relative to UTC.
+epochTimeToMSDOSDateTime :: Integer -> MSDOSDateTime
+epochTimeToMSDOSDateTime epochtime =
+  let ut = toUTCTime (TOD epochtime 0) 
+      dosTime = toEnum $ (ctSec ut `div` 2) + shiftL (ctMin ut) 5 + shiftL (ctHour ut) 11
+      dosDate = toEnum $ ctDay ut + shiftL (fromEnum (ctMonth ut) + 1) 5 + shiftL (ctYear ut - 1980) 9
+  in  MSDOSDateTime { msDOSDate = dosDate, msDOSTime = dosTime }
+
+-- | Convert a MSDOS datetime to a 'ClockTime'.
+msDOSDateTimeToEpochTime :: MSDOSDateTime -> Integer
+msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTime}) =
+  let seconds = fromIntegral $ 2 * (dosTime .&. 0O37)
+      minutes = fromIntegral $ (shiftR dosTime 5) .&. 0O77
+      hour    = fromIntegral $ shiftR dosTime 11
+      day     = fromIntegral $ dosDate .&. 0O37
+      month   = fromIntegral $ ((shiftR dosDate 5) .&. 0O17) - 1
+      year    = fromIntegral $ shiftR dosDate 9
+      timeSinceEpoch = TimeDiff
+               { tdYear = year + 10, -- dos times since 1980, unix epoch starts 1970
+                 tdMonth = month,
+                 tdDay = day - 1,  -- dos days start from 1
+                 tdHour = hour,
+                 tdMin = minutes,
+                 tdSec = seconds,
+                 tdPicosec = 0 }
+      (TOD epochsecs _) = addToClockTime timeSinceEpoch (TOD 0 0)
+  in  epochsecs
+
 getDirectoryContentsRecursive :: FilePath -> IO [FilePath]
 getDirectoryContentsRecursive path = do
   isDir <- doesDirectoryExist path
@@ -387,12 +375,11 @@ getDirectoryContentsRecursive path = do
           else return (path : concat children)
      else return [path]
 
-setFileTimeStamp :: FilePath -> MSDOSDateTime -> IO ()
-setFileTimeStamp file datetime = do
+setFileTimeStamp :: FilePath -> Integer -> IO ()
+setFileTimeStamp file epochtime = do
 #ifdef _WINDOWS
   return ()  -- TODO - figure out how to set the timestamp on Windows
 #else
-  let (TOD epochtime _) = msDOSDateTimeToClockTime datetime
   let epochtime' = fromInteger epochtime
   setFileTimes file epochtime' epochtime'
 #endif
@@ -546,8 +533,9 @@ putLocalFile f = do
   putWord16le $ case eCompressionMethod f of
                      NoCompression -> 0
                      Deflate       -> 8
-  putWord16le $ msDOSTime $ eLastModified f
-  putWord16le $ msDOSDate $ eLastModified f
+  let modTime = epochTimeToMSDOSDateTime $ eLastModified f
+  putWord16le $ msDOSTime modTime
+  putWord16le $ msDOSDate modTime
   putWord32le $ eCRC32 f
   putWord32le $ eCompressedSize f
   putWord32le $ eUncompressedSize f
@@ -620,7 +608,8 @@ getFileHeader locals = do
        return $ Just $ ZipEntry
                  { eRelativePath            = toString fileName
                  , eCompressionMethod       = compressionMethod
-                 , eLastModified            = MSDOSDateTime { msDOSDate = lastModFileDate,
+                 , eLastModified            = msDOSDateTimeToEpochTime $
+                                              MSDOSDateTime { msDOSDate = lastModFileDate,
                                                               msDOSTime = lastModFileTime }
                  , eCRC32                   = crc32
                  , eCompressedSize          = compressedSize
@@ -643,8 +632,9 @@ putFileHeader offset local = do
   putWord16le $ case eCompressionMethod local of
                      NoCompression -> 0
                      Deflate       -> 8
-  putWord16le $ msDOSTime $ eLastModified local
-  putWord16le $ msDOSDate $ eLastModified local
+  let modTime = epochTimeToMSDOSDateTime $ eLastModified local
+  putWord16le $ msDOSTime modTime
+  putWord16le $ msDOSDate modTime
   putWord32le $ eCRC32 local
   putWord32le $ eCompressedSize local
   putWord32le $ eUncompressedSize local
