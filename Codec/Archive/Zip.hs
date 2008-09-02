@@ -48,7 +48,7 @@ module Codec.Archive.Zip
 
        -- * Functions for working with zip entries
        , findZipEntryByPath
-       , contentsOfZipEntry
+       , fromZipEntry
        , readZipEntry
        , writeZipEntry
 
@@ -164,12 +164,12 @@ findZipEntryByPath :: FilePath -> ZipArchive -> Maybe ZipEntry
 findZipEntryByPath path archive = find (\e -> path == eRelativePath e) (zEntries archive)
 
 -- | Returns uncompressed contents of zip entry.
-contentsOfZipEntry :: ZipEntry -> Either String B.ByteString
-contentsOfZipEntry entry =
+fromZipEntry :: ZipEntry -> B.ByteString
+fromZipEntry entry =
   let uncompressedData = decompressData (eCompressionMethod entry) (eCompressedData entry)
   in  if eCRC32 entry == computeCRC32 uncompressedData
-         then Right uncompressedData
-         else Left "CRC32 mismatch"
+         then uncompressedData
+         else error "CRC32 mismatch"
 
 -- | Generates a 'ZipEntry' from a file or directory.
 readZipEntry :: FilePath -> IO ZipEntry
@@ -205,10 +205,7 @@ readZipEntry path = do
 
 -- | Writes contents of a 'ZipEntry' to a file.
 writeZipEntry :: FilePath -> ZipEntry -> IO ()
-writeZipEntry path entry = do
-  case contentsOfZipEntry entry of
-       Left e  -> error e
-       Right c -> B.writeFile path c
+writeZipEntry path entry = B.writeFile path (fromZipEntry entry)
 
 -- | Uncompress a lazy bytestring.
 compressData :: CompressionMethod -> B.ByteString -> B.ByteString
