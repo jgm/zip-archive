@@ -38,7 +38,6 @@ module Codec.Archive.Zip
        , CompressionMethod (..)
        , ZipOption (..)
        , emptyZipArchive
-       , defaultZipEntry
 
        -- * Functions for working with zip archives
        , toZipArchive
@@ -133,22 +132,6 @@ emptyZipArchive = ZipArchive
                 { zEntries                  = []
                 , zSignature              = Nothing
                 , zComment                = B.empty }
-
--- | Default values for a 'ZipEntry'.
-defaultZipEntry :: ZipEntry
-defaultZipEntry = ZipEntry
-                 { eRelativePath            = ""
-                 , eCompressionMethod       = Deflate
-                 , eLastModified            = 0
-                 , eCRC32                   = 0
-                 , eCompressedSize          = 0
-                 , eUncompressedSize        = 0
-                 , eExtraField              = B.empty
-                 , eFileComment             = B.empty
-                 , eInternalFileAttributes  = 0  -- potentially non-text
-                 , eExternalFileAttributes  = 0  -- appropriate if from stdin
-                 , eCompressedData          = B.empty
-                 }
 
 -- | Reads a 'ZipArchive' structure from a raw zip archive (in a lazy bytestring).
 toZipArchive :: B.ByteString -> ZipArchive
