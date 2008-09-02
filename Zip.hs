@@ -16,6 +16,7 @@ import System.Environment
 import System.Directory
 import System.Console.GetOpt
 import Control.Monad ( when )
+import Control.Applicative ( (<$>) )
 
 data Flag 
   = Quiet 
@@ -56,7 +57,7 @@ main = do
   let (archivePath : files) = args
   exists <- doesFileExist archivePath
   archive <- if exists
-                then readZipArchive archivePath
+                then toZipArchive <$> B.readFile archivePath
                 else return emptyZipArchive
   case cmd' of
        Decompress  -> extractFilesFromZipArchive verbosity archive  

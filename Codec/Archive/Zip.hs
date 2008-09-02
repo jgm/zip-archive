@@ -43,8 +43,6 @@ module Codec.Archive.Zip
        -- * Functions for working with zip archives
        , toZipArchive
        , fromZipArchive
-       , readZipArchive
-       , writeZipArchive
        , filesInZipArchive
        , addEntryToZipArchive
        , deleteEntryFromZipArchive
@@ -159,14 +157,6 @@ toZipArchive = runGet getZipArchive
 -- | Writes a 'ZipArchive' structure to a raw zip archive (in a lazy bytestring).
 fromZipArchive :: ZipArchive -> B.ByteString
 fromZipArchive = runPut . putZipArchive
-
--- | Reads a 'ZipArchive' structure from a zip file.
-readZipArchive :: FilePath -> IO ZipArchive
-readZipArchive f = B.readFile f >>= return . toZipArchive
-
--- | Writes a 'ZipArchive' structure to a zip file.
-writeZipArchive :: FilePath -> ZipArchive -> IO ()
-writeZipArchive f a = B.writeFile f (fromZipArchive a)
 
 -- | Returns list of files in a zip archive.
 filesInZipArchive :: ZipArchive -> [FilePath]
