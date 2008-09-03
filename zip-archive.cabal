@@ -1,5 +1,5 @@
 Name:                zip-archive
-Version:             0.1
+Version:             0.1.1
 Cabal-version:       >= 1.2
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
@@ -11,7 +11,7 @@ License-file:        LICENSE
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
 Build-Depends:       base
-Extra-Source-Files:  Tests.hs, COPYING, Data/Hash/CRC32/GZip.hs
+Extra-Source-Files:  Tests.hs, COPYING
 
 flag splitBase
   Description:       Choose the new, smaller, split-up base package.
@@ -27,6 +27,7 @@ Library
     Build-depends:   base < 3
   Build-depends:     binary, zlib, filepath, directory, bytestring >= 0.9.0, array, mtl, utf8-string, old-time
   Exposed-modules:   Codec.Archive.Zip
+  Other-modules:     Data.Hash.CRC32.GZip
   Hs-Source-Dirs:    .
   Ghc-Options:       -Wall
   Extensions:        CPP
