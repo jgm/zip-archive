@@ -14,13 +14,10 @@
 --
 -- Certain simplifying assumptions are made about the zip archives: in
 -- particular, there is no support for encryption, zip files that span
--- multiple disks, ZIP64, or compression methods other than Deflate.
--- However, the library should be able to read the most common zip
--- archives, and the archives it produces should be readable by all
--- standard unzip programs.
---
--- Because the file modification times in zip archives do not include
--- time zone information, UTC is assumed.
+-- multiple disks, ZIP64, OS-specific file attributes, or compression
+-- methods other than Deflate.  However, the library should be able to
+-- read the most common zip archives, and the archives it produces should
+-- be readable by all standard unzip programs.
 --
 -- As an example of the use of the library, a standalone zip archiver
 -- and extracter, Zip.hs, is provided in the source distribution.
@@ -32,28 +29,26 @@
 module Codec.Archive.Zip
        (
 
-       -- * Data structures and default values
+       -- * Data structures
          Archive (..)
        , Entry (..)
        , CompressionMethod (..)
        , ZipOption (..)
        , emptyArchive
 
-       -- * Functions for working with zip archives
+       -- * Pure functions for working with zip archives
        , toArchive
        , fromArchive
        , filesInArchive
        , addEntryToArchive
        , deleteEntryFromArchive
-
-       -- * Functions for working with zip entries
        , findEntryByPath
        , fromEntry
        , toEntry
+
+       -- * IO functions for working with zip archives
        , readEntry
        , writeEntry
-
-       -- * IO functions for adding files to and extracting files from a zip archive
        , addFilesToArchive
        , extractFilesFromArchive
 
@@ -73,6 +68,7 @@ import qualified Control.Monad.State as S
 import Control.Monad ( when, unless, zipWithM )
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
+import qualified Data.Hash.CRC32.GZip as CRC32
 
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes )
@@ -88,31 +84,29 @@ import Data.ByteString.Lazy.UTF8 ( toString, fromString )
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
 
-import qualified Data.Hash.CRC32.GZip as CRC32
-
 ------------------------------------------------------------------------
+
 -- | Structured representation of a zip archive, including directory
 -- information and contents (in lazy bytestrings).
-
 data Archive = Archive
-                { zEntries                :: [Entry]           -- ^ files in zip archive
-                , zSignature              :: Maybe B.ByteString   -- ^ digital signature
-                , zComment                :: B.ByteString         -- ^ comment for whole zip archive
+                { zEntries                :: [Entry]              -- ^ Files in zip archive
+                , zSignature              :: Maybe B.ByteString   -- ^ Digital signature
+                , zComment                :: B.ByteString         -- ^ Comment for whole zip archive
                 } deriving (Read, Show)
 
 -- | Representation of an archived file, including content and metadata.
 data Entry = Entry
-               { eRelativePath            :: FilePath            -- ^ relative path, using '/' as separator
-               , eCompressionMethod       :: CompressionMethod   -- ^ compression method
-               , eLastModified            :: Integer             -- ^ modification time (seconds since unix epoch)
-               , eCRC32                   :: Word32              -- ^ crc32 checksum
-               , eCompressedSize          :: Word32              -- ^ compressed size in bytes
-               , eUncompressedSize        :: Word32              -- ^ uncompressed size in bytes
-               , eExtraField              :: B.ByteString        -- ^ extra field - unused by this library
-               , eFileComment             :: B.ByteString        -- ^ file comment - unused by this library
-               , eInternalFileAttributes  :: Word16              -- ^ internal file attributes - unused by this library
-               , eExternalFileAttributes  :: Word32              -- ^ external file attributes (system-dependent)
-               , eCompressedData          :: B.ByteString        -- ^ compressed contents of file
+               { eRelativePath            :: FilePath            -- ^ Relative path, using '/' as separator
+               , eCompressionMethod       :: CompressionMethod   -- ^ Compression method
+               , eLastModified            :: Integer             -- ^ Modification time (seconds since unix epoch)
+               , eCRC32                   :: Word32              -- ^ CRC32 checksum
+               , eCompressedSize          :: Word32              -- ^ Compressed size in bytes
+               , eUncompressedSize        :: Word32              -- ^ Uncompressed size in bytes
+               , eExtraField              :: B.ByteString        -- ^ Extra field - unused by this library
+               , eFileComment             :: B.ByteString        -- ^ File comment - unused by this library
+               , eInternalFileAttributes  :: Word16              -- ^ Internal file attributes - unused by this library
+               , eExternalFileAttributes  :: Word32              -- ^ External file attributes (system-dependent)
+               , eCompressedData          :: B.ByteString        -- ^ Compressed contents of file
                } deriving (Read, Show, Eq)
 
 -- | Compression methods.
@@ -121,7 +115,9 @@ data CompressionMethod = Deflate
                        deriving (Read, Show, Eq)
 
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
-data ZipOption = OptRecursive | OptVerbose deriving (Read, Show, Eq)
+data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
+               | OptVerbose                 -- ^ Print information to stderr
+               deriving (Read, Show, Eq)
 
 -- | A zip archive with no contents.
 emptyArchive :: Archive
@@ -130,33 +126,33 @@ emptyArchive = Archive
                 , zSignature              = Nothing
                 , zComment                = B.empty }
 
--- | Reads a 'Archive' structure from a raw zip archive (in a lazy bytestring).
+-- | Reads an 'Archive' structure from a raw zip archive (in a lazy bytestring).
 toArchive :: B.ByteString -> Archive
 toArchive = runGet getArchive
 
--- | Writes a 'Archive' structure to a raw zip archive (in a lazy bytestring).
+-- | Writes an 'Archive' structure to a raw zip archive (in a lazy bytestring).
 fromArchive :: Archive -> B.ByteString
 fromArchive = runPut . putArchive
 
--- | Returns list of files in a zip archive.
+-- | Returns a list of files in a zip archive.
 filesInArchive :: Archive -> [FilePath]
 filesInArchive = (map eRelativePath) . zEntries
 
 -- | Adds an entry to a zip archive, or updates an existing entry.
 addEntryToArchive :: Entry -> Archive -> Archive
 addEntryToArchive entry archive =
-  let archive' = deleteEntryFromArchive (eRelativePath entry) archive
+  let archive'   = deleteEntryFromArchive (eRelativePath entry) archive
       oldEntries = zEntries archive'
   in  archive' { zEntries = entry : oldEntries }
 
 -- | Deletes an entry from a zip archive.
 deleteEntryFromArchive :: FilePath -> Archive -> Archive
 deleteEntryFromArchive path archive =
-  let path' = zipifyFilePath path
+  let path'      = zipifyFilePath path
       newEntries = filter (\e -> eRelativePath e /= path') $ zEntries archive
   in  archive { zEntries = newEntries }
 
--- | Returns the zip entry with the specified path, or Nothing.
+-- | Returns Just the zip entry with the specified path, or Nothing.
 findEntryByPath :: FilePath -> Archive -> Maybe Entry
 findEntryByPath path archive = find (\e -> path == eRelativePath e) (zEntries archive)
 
@@ -168,14 +164,14 @@ fromEntry entry =
          then uncompressedData
          else error "CRC32 mismatch"
 
--- | Create an 'Entry' with specified file path, modification time, and contents. 
+-- | Create an 'Entry' with specified file path, modification time, and contents.
 toEntry :: FilePath         -- ^ File path for entry
         -> Integer          -- ^ Modification time for entry (seconds since unix epoch)
         -> B.ByteString     -- ^ Contents of entry
         -> Entry
 toEntry path modtime contents =
   let uncompressedSize = B.length contents
-      compressedData = compressData Deflate contents 
+      compressedData = compressData Deflate contents
       compressedSize = B.length compressedData
       -- only use compression if it helps!
       (compressionMethod, finalData, finalSize) =
@@ -220,7 +216,7 @@ readEntry opts path = do
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   let path = eRelativePath entry
-  -- create directories
+  -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
   unless exists $ do
@@ -235,9 +231,11 @@ writeEntry opts entry = do
                                  Deflate       -> " inflating: " ++ path
                                  NoCompression -> "extracting: " ++ path
        B.writeFile path (fromEntry entry)
+  -- Note that last modified times are supported only for POSIX, not for
+  -- Windows.
   setFileTimeStamp path (eLastModified entry)
 
--- | Add the specified files to a 'Archive'.  If 'OptRecursive' is specified,
+-- | Add the specified files to an 'Archive'.  If 'OptRecursive' is specified,
 -- recursively add files contained in directories.  If 'OptVerbose' is specified,
 -- print messages to stderr.
 addFilesToArchive :: [ZipOption] -> Archive -> [FilePath] -> IO Archive
@@ -248,10 +246,10 @@ addFilesToArchive opts archive files = do
   entries <- mapM (readEntry opts) filesAndChildren
   return $ foldr addEntryToArchive archive entries
 
--- | Extract all files from a 'Archive', creating directories
+-- | Extract all files from an 'Archive', creating directories
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
--- Note that last modified times are supported only for POSIX, not for
--- Windows.
+-- Note that the last-modified time is set correctly only in POSIX,
+-- not in Windows.
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archive
 
@@ -310,7 +308,7 @@ data MSDOSDateTime = MSDOSDateTime { msDOSDate :: Word16
 -- | Convert a clock time to a MSDOS datetime.  The MSDOS time will be relative to UTC.
 epochTimeToMSDOSDateTime :: Integer -> MSDOSDateTime
 epochTimeToMSDOSDateTime epochtime =
-  let ut = toUTCTime (TOD epochtime 0) 
+  let ut = toUTCTime (TOD epochtime 0)
       dosTime = toEnum $ (ctSec ut `div` 2) + shiftL (ctMin ut) 5 + shiftL (ctHour ut) 11
       dosDate = toEnum $ ctDay ut + shiftL (fromEnum (ctMonth ut) + 1) 5 + shiftL (ctYear ut - 1980) 9
   in  MSDOSDateTime { msDOSDate = dosDate, msDOSTime = dosTime }
@@ -643,4 +641,3 @@ putDigitalSignature (Just sig) = do
   putWord32le 0x08064b50
   putWord16le $ fromIntegral $ B.length sig
   putLazyByteString sig
-
