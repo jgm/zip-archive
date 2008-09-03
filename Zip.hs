@@ -57,23 +57,23 @@ main = do
   let (archivePath : files) = args
   exists <- doesFileExist archivePath
   archive <- if exists
-                then toZipArchive <$> B.readFile archivePath
-                else return emptyZipArchive
+                then toArchive <$> B.readFile archivePath
+                else return emptyArchive
   case cmd' of
-       Decompress  -> extractFilesFromZipArchive verbosity archive  
+       Decompress  -> extractFilesFromArchive verbosity archive  
        Remove      -> do tempDir <- getTemporaryDirectory
                          (tempArchivePath, tempArchive) <- openTempFile tempDir "zip" 
-                         B.hPut tempArchive $ fromZipArchive $ 
-                                              foldr deleteEntryFromZipArchive archive files
+                         B.hPut tempArchive $ fromArchive $ 
+                                              foldr deleteEntryFromArchive archive files
                          hClose tempArchive
                          copyFile tempArchivePath archivePath
                          removeFile tempArchivePath
-       List        -> mapM_ putStrLn $ filesInZipArchive archive
+       List        -> mapM_ putStrLn $ filesInArchive archive
        Recursive   -> do when (null files) $ error "No files specified."
                          tempDir <- getTemporaryDirectory
                          (tempArchivePath, tempArchive) <- openTempFile tempDir "zip" 
-                         addFilesToZipArchive (verbosity ++ [OptRecursive]) archive files >>= 
-                            B.hPut tempArchive . fromZipArchive
+                         addFilesToArchive (verbosity ++ [OptRecursive]) archive files >>= 
+                            B.hPut tempArchive . fromArchive
                          hClose tempArchive
                          copyFile tempArchivePath archivePath
                          removeFile tempArchivePath

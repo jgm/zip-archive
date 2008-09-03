@@ -33,32 +33,29 @@ module Codec.Archive.Zip
        (
 
        -- * Data structures and default values
-         ZipArchive (..)
-       , ZipEntry (..)
+         Archive (..)
+       , Entry (..)
        , CompressionMethod (..)
        , ZipOption (..)
-       , emptyZipArchive
+       , emptyArchive
 
        -- * Functions for working with zip archives
-       , toZipArchive
-       , fromZipArchive
-       , filesInZipArchive
-       , addEntryToZipArchive
-       , deleteEntryFromZipArchive
+       , toArchive
+       , fromArchive
+       , filesInArchive
+       , addEntryToArchive
+       , deleteEntryFromArchive
 
        -- * Functions for working with zip entries
-       , findZipEntryByPath
-       , fromZipEntry
-       , readZipEntry
-       , writeZipEntry
-
-       -- * Functions for compressing and decompressing data
-       , compressData
-       , decompressData
+       , findEntryByPath
+       , fromEntry
+       , toEntry
+       , readEntry
+       , writeEntry
 
        -- * IO functions for adding files to and extracting files from a zip archive
-       , addFilesToZipArchive
-       , extractFilesFromZipArchive
+       , addFilesToArchive
+       , extractFilesFromArchive
 
        ) where
 
@@ -97,14 +94,14 @@ import qualified Data.Hash.CRC32.GZip as CRC32
 -- | Structured representation of a zip archive, including directory
 -- information and contents (in lazy bytestrings).
 
-data ZipArchive = ZipArchive
-                { zEntries                :: [ZipEntry]           -- ^ files in zip archive
+data Archive = Archive
+                { zEntries                :: [Entry]           -- ^ files in zip archive
                 , zSignature              :: Maybe B.ByteString   -- ^ digital signature
                 , zComment                :: B.ByteString         -- ^ comment for whole zip archive
                 } deriving (Read, Show)
 
 -- | Representation of an archived file, including content and metadata.
-data ZipEntry = ZipEntry
+data Entry = Entry
                { eRelativePath            :: FilePath            -- ^ relative path, using '/' as separator
                , eCompressionMethod       :: CompressionMethod   -- ^ compression method
                , eLastModified            :: Integer             -- ^ modification time (seconds since unix epoch)
@@ -123,145 +120,140 @@ data CompressionMethod = Deflate
                        | NoCompression
                        deriving (Read, Show, Eq)
 
--- | Options for 'addFilesToZipArchive' and 'extractFilesFromZipArchive'.
+-- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
 data ZipOption = OptRecursive | OptVerbose deriving (Read, Show, Eq)
 
 -- | A zip archive with no contents.
-emptyZipArchive :: ZipArchive
-emptyZipArchive = ZipArchive
+emptyArchive :: Archive
+emptyArchive = Archive
                 { zEntries                  = []
                 , zSignature              = Nothing
                 , zComment                = B.empty }
 
--- | Reads a 'ZipArchive' structure from a raw zip archive (in a lazy bytestring).
-toZipArchive :: B.ByteString -> ZipArchive
-toZipArchive = runGet getZipArchive
+-- | Reads a 'Archive' structure from a raw zip archive (in a lazy bytestring).
+toArchive :: B.ByteString -> Archive
+toArchive = runGet getArchive
 
--- | Writes a 'ZipArchive' structure to a raw zip archive (in a lazy bytestring).
-fromZipArchive :: ZipArchive -> B.ByteString
-fromZipArchive = runPut . putZipArchive
+-- | Writes a 'Archive' structure to a raw zip archive (in a lazy bytestring).
+fromArchive :: Archive -> B.ByteString
+fromArchive = runPut . putArchive
 
 -- | Returns list of files in a zip archive.
-filesInZipArchive :: ZipArchive -> [FilePath]
-filesInZipArchive = (map eRelativePath) . zEntries
+filesInArchive :: Archive -> [FilePath]
+filesInArchive = (map eRelativePath) . zEntries
 
 -- | Adds an entry to a zip archive, or updates an existing entry.
-addEntryToZipArchive :: ZipEntry -> ZipArchive -> ZipArchive
-addEntryToZipArchive entry archive =
-  let archive' = deleteEntryFromZipArchive (eRelativePath entry) archive
+addEntryToArchive :: Entry -> Archive -> Archive
+addEntryToArchive entry archive =
+  let archive' = deleteEntryFromArchive (eRelativePath entry) archive
       oldEntries = zEntries archive'
   in  archive' { zEntries = entry : oldEntries }
 
 -- | Deletes an entry from a zip archive.
-deleteEntryFromZipArchive :: FilePath -> ZipArchive -> ZipArchive
-deleteEntryFromZipArchive path archive =
+deleteEntryFromArchive :: FilePath -> Archive -> Archive
+deleteEntryFromArchive path archive =
   let path' = zipifyFilePath path
       newEntries = filter (\e -> eRelativePath e /= path') $ zEntries archive
   in  archive { zEntries = newEntries }
 
 -- | Returns the zip entry with the specified path, or Nothing.
-findZipEntryByPath :: FilePath -> ZipArchive -> Maybe ZipEntry
-findZipEntryByPath path archive = find (\e -> path == eRelativePath e) (zEntries archive)
+findEntryByPath :: FilePath -> Archive -> Maybe Entry
+findEntryByPath path archive = find (\e -> path == eRelativePath e) (zEntries archive)
 
 -- | Returns uncompressed contents of zip entry.
-fromZipEntry :: ZipEntry -> B.ByteString
-fromZipEntry entry =
+fromEntry :: Entry -> B.ByteString
+fromEntry entry =
   let uncompressedData = decompressData (eCompressionMethod entry) (eCompressedData entry)
   in  if eCRC32 entry == computeCRC32 uncompressedData
          then uncompressedData
          else error "CRC32 mismatch"
 
--- | Generates a 'ZipEntry' from a file or directory.
-readZipEntry :: FilePath -> IO ZipEntry
-readZipEntry path = do
+-- | Create an 'Entry' with specified file path, modification time, and contents. 
+toEntry :: FilePath         -- ^ File path for entry
+        -> Integer          -- ^ Modification time for entry (seconds since unix epoch)
+        -> B.ByteString     -- ^ Contents of entry
+        -> Entry
+toEntry path modtime contents =
+  let uncompressedSize = B.length contents
+      compressedData = compressData Deflate contents 
+      compressedSize = B.length compressedData
+      -- only use compression if it helps!
+      (compressionMethod, finalData, finalSize) =
+        if uncompressedSize <= compressedSize
+           then (NoCompression, contents, uncompressedSize)
+           else (Deflate, compressedData, compressedSize)
+      crc32 = CRC32.calc_crc32 $ map w2c $ B.unpack contents
+  in  Entry { eRelativePath            = path
+            , eCompressionMethod       = compressionMethod
+            , eLastModified            = modtime
+            , eCRC32                   = crc32
+            , eCompressedSize          = fromIntegral finalSize
+            , eUncompressedSize        = fromIntegral uncompressedSize
+            , eExtraField              = B.empty
+            , eFileComment             = B.empty
+            , eInternalFileAttributes  = 0  -- potentially non-text
+            , eExternalFileAttributes  = 0  -- appropriate if from stdin
+            , eCompressedData          = finalData
+            }
+
+-- | Generates a 'Entry' from a file or directory.
+readEntry :: [ZipOption] -> FilePath -> IO Entry
+readEntry opts path = do
   isDir <- doesDirectoryExist path
   let path' = zipifyFilePath $ normalise $
               path ++ if isDir then "/" else ""  -- make sure directories end with /
-  uncompressedData <- if isDir
-                         then return B.empty
-                         else B.readFile path
-  let uncompressedSize = B.length uncompressedData
-  let compressedData = compressData Deflate uncompressedData
-  let compressedSize = B.length compressedData
-  -- only use compression if it helps!
-  let (compressionMethod, finalData, finalSize) =
-        if uncompressedSize <= compressedSize
-           then (NoCompression, uncompressedData, uncompressedSize)
-           else (Deflate, compressedData, compressedSize)
+  contents <- if isDir
+                 then return B.empty
+                 else B.readFile path
   (TOD modEpochTime _) <- getModificationTime path
-  let crc32 = CRC32.calc_crc32 $ map w2c $ B.unpack uncompressedData
-  return $ ZipEntry { eRelativePath            = path'
-                    , eCompressionMethod       = compressionMethod
-                    , eLastModified            = modEpochTime
-                    , eCRC32                   = crc32
-                    , eCompressedSize          = fromIntegral finalSize
-                    , eUncompressedSize        = fromIntegral uncompressedSize
-                    , eExtraField              = B.empty
-                    , eFileComment             = B.empty
-                    , eInternalFileAttributes  = 0  -- potentially non-text
-                    , eExternalFileAttributes  = 0  -- appropriate if from stdin
-                    , eCompressedData          = finalData
-                    }
+  let entry = toEntry path' modEpochTime contents
+  when (OptVerbose `elem` opts) $ do
+    let compmethod = case eCompressionMethod entry of
+                     Deflate       -> "deflated"
+                     NoCompression -> "stored"
+    hPutStrLn stderr $
+      printf "  adding: %s (%s %.f%%)" (eRelativePath entry)
+      compmethod (100 - (100 * compressionRatio entry))
+  return entry
 
--- | Writes contents of a 'ZipEntry' to a file.
-writeZipEntry :: FilePath -> ZipEntry -> IO ()
-writeZipEntry path entry = B.writeFile path (fromZipEntry entry)
+-- | Writes contents of an 'Entry' to a file.
+writeEntry :: [ZipOption] -> Entry -> IO ()
+writeEntry opts entry = do
+  let path = eRelativePath entry
+  -- create directories
+  let dir = takeDirectory path
+  exists <- doesDirectoryExist dir
+  unless exists $ do
+    createDirectoryIfMissing True dir
+    when (OptVerbose `elem` opts) $
+      hPutStrLn stderr $ "  creating: " ++ dir
+  if length path > 0 && last path == '/' -- path is a directory
+     then return ()
+     else do
+       when (OptVerbose `elem` opts) $ do
+         hPutStrLn stderr $ case eCompressionMethod entry of
+                                 Deflate       -> " inflating: " ++ path
+                                 NoCompression -> "extracting: " ++ path
+       B.writeFile path (fromEntry entry)
+  setFileTimeStamp path (eLastModified entry)
 
--- | Uncompress a lazy bytestring.
-compressData :: CompressionMethod -> B.ByteString -> B.ByteString
-compressData Deflate       = Zlib.compress
-compressData NoCompression = id
-
--- | Compress a lazy bytestring.
-decompressData :: CompressionMethod -> B.ByteString -> B.ByteString
-decompressData Deflate       = Zlib.decompress
-decompressData NoCompression = id
-
--- | Add the specified files to a 'ZipArchive'.  If 'OptRecursive' is specified,
+-- | Add the specified files to a 'Archive'.  If 'OptRecursive' is specified,
 -- recursively add files contained in directories.  If 'OptVerbose' is specified,
 -- print messages to stderr.
-addFilesToZipArchive :: [ZipOption] -> ZipArchive -> [FilePath] -> IO ZipArchive
-addFilesToZipArchive opts archive files = do
+addFilesToArchive :: [ZipOption] -> Archive -> [FilePath] -> IO Archive
+addFilesToArchive opts archive files = do
   filesAndChildren <- if OptRecursive `elem` opts
                          then mapM getDirectoryContentsRecursive files >>= return . nub . concat
                          else return files
-  let readZipEntry' f = do entry <- readZipEntry f
-                           when (OptVerbose `elem` opts) $ do
-                             let compmethod = case eCompressionMethod entry of
-                                              Deflate       -> "deflated"
-                                              NoCompression -> "stored"
-                             hPutStrLn stderr $
-                               printf "  adding: %s (%s %2.f%%)" (eRelativePath entry)
-                               compmethod (100 - (100 * compressionRatio entry))
-                           return entry
-  entries <- mapM readZipEntry' filesAndChildren
-  return $ foldr addEntryToZipArchive archive entries
+  entries <- mapM (readEntry opts) filesAndChildren
+  return $ foldr addEntryToArchive archive entries
 
--- | Extract all files from a 'ZipArchive', creating directories
+-- | Extract all files from a 'Archive', creating directories
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
 -- Note that last modified times are supported only for POSIX, not for
 -- Windows.
-extractFilesFromZipArchive :: [ZipOption] -> ZipArchive -> IO ()
-extractFilesFromZipArchive opts archive = do
-  let entries = zEntries archive
-  let writeEntry' e = do let path = eRelativePath e
-                         -- create directories
-                         let dir = takeDirectory path
-                         exists <- doesDirectoryExist dir
-                         unless exists $ do
-                           createDirectoryIfMissing True path
-                           when (OptVerbose `elem` opts) $
-                             hPutStrLn stderr $ "  creating: " ++ path
-                         if length path > 0 && last path == '/' -- path is a directory
-                            then return ()
-                            else do
-                              when (OptVerbose `elem` opts) $ do
-                                hPutStrLn stderr $ case eCompressionMethod e of
-                                                        Deflate       -> " inflating: " ++ path
-                                                        NoCompression -> "extracting: " ++ path
-                              writeZipEntry path e
-                         setFileTimeStamp path (eLastModified e)
-  mapM_ writeEntry' entries
+extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
+extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
@@ -286,7 +278,18 @@ zipifyFilePath path =
 computeCRC32 :: B.ByteString -> Word32
 computeCRC32 = CRC32.calc_crc32 . map w2c . B.unpack
 
-compressionRatio :: ZipEntry -> Float
+-- | Uncompress a lazy bytestring.
+compressData :: CompressionMethod -> B.ByteString -> B.ByteString
+compressData Deflate       = Zlib.compress
+compressData NoCompression = id
+
+-- | Compress a lazy bytestring.
+decompressData :: CompressionMethod -> B.ByteString -> B.ByteString
+decompressData Deflate       = Zlib.decompress
+decompressData NoCompression = id
+
+-- | Calculate compression ratio for an entry (for verbose output).
+compressionRatio :: Entry -> Float
 compressionRatio entry =
   if eUncompressedSize entry == 0
      then 1
@@ -401,8 +404,8 @@ setFileTimeStamp file epochtime = do
 -- >   .ZIP file comment length        2 bytes
 -- >   .ZIP file comment       (variable size)
 
-getZipArchive :: Get ZipArchive
-getZipArchive = do
+getArchive :: Get Archive
+getArchive = do
   locals <- many getLocalFile
   files <- many (getFileHeader locals)
   digSig <- lookAheadM getDigitalSignature
@@ -416,14 +419,14 @@ getZipArchive = do
   skip 4 -- offset of central directory
   commentLength <- getWord16le
   zipComment <- getLazyByteString (toEnum $ fromEnum commentLength)
-  return $ ZipArchive
+  return $ Archive
            { zEntries                = files
            , zSignature              = digSig
            , zComment                = zipComment
            }
 
-putZipArchive :: ZipArchive -> Put
-putZipArchive archive = do
+putArchive :: Archive -> Put
+putArchive archive = do
   mapM_ putLocalFile $ zEntries archive
   let localFileSizes = map localFileSize $ zEntries archive
   let offsets = scanl (+) 0 localFileSizes
@@ -441,13 +444,13 @@ putZipArchive archive = do
   putLazyByteString $ zComment archive
 
 
-fileHeaderSize :: ZipEntry -> Word32
+fileHeaderSize :: Entry -> Word32
 fileHeaderSize f =
   fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 +
     fromIntegral (B.length $ fromString $ zipifyFilePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eFileComment f)
 
-localFileSize :: ZipEntry -> Word32
+localFileSize :: Entry -> Word32
 localFileSize f =
   fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 +
     fromIntegral (B.length $ fromString $ zipifyFilePath $ eRelativePath f) +
@@ -495,7 +498,7 @@ getLocalFile = do
       compressedData <- getLazyByteString (fromIntegral compressedSize)
       return $ Just (fromIntegral offset, compressedData)
 
-putLocalFile :: ZipEntry -> Put
+putLocalFile :: Entry -> Put
 putLocalFile f = do
   putWord32le 0x04034b50
   putWord16le 20 -- version needed to extract (>=2.0)
@@ -540,7 +543,7 @@ putLocalFile f = do
 -- >    file comment (variable size)
 
 getFileHeader :: [(Word32, B.ByteString)]  -- ^ list of (offset, content) pairs returned by getLocalFile
-              -> Get (Maybe ZipEntry)
+              -> Get (Maybe Entry)
 getFileHeader locals = do
   sig <- lookAhead getWord32le
   if sig /= 0x02014b50
@@ -575,7 +578,7 @@ getFileHeader locals = do
        compressedData <- case lookup relativeOffset locals of
                          Just x  -> return x
                          Nothing -> fail $ "Unable to find data at offset " ++ show relativeOffset
-       return $ Just $ ZipEntry
+       return $ Just $ Entry
                  { eRelativePath            = toString fileName
                  , eCompressionMethod       = compressionMethod
                  , eLastModified            = msDOSDateTimeToEpochTime $
@@ -592,7 +595,7 @@ getFileHeader locals = do
                  }
 
 putFileHeader :: Word32        -- ^ offset
-              -> ZipEntry
+              -> Entry
               -> Put
 putFileHeader offset local = do
   putWord32le 0x02014b50
