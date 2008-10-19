@@ -270,8 +270,9 @@ zipifyFilePath :: FilePath -> String
 zipifyFilePath path =
   let dir = takeDirectory path
       fn  = takeFileName path
-      dirParts = splitDirectories dir
-  in  concat (map (++ "/") dirParts) ++ fn
+      (drive, dir') = splitDrive dir
+      dirParts = splitDirectories dir'
+  in  drive ++ (concat (map (++ "/") dirParts)) ++ fn
 
 computeCRC32 :: B.ByteString -> Word32
 computeCRC32 = CRC32.calc_crc32 . map w2c . B.unpack
