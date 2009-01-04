@@ -68,7 +68,8 @@ import qualified Control.Monad.State as S
 import Control.Monad ( when, unless, zipWithM )
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
-import qualified Data.Hash.CRC32.GZip as CRC32
+import qualified Data.Digest.CRC32 as CRC32
+import qualified Data.Map as M
 
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes )
@@ -76,7 +77,6 @@ import System.Posix.Files ( setFileTimes )
 
 -- from bytestring
 import qualified Data.ByteString.Lazy as B
-import Data.ByteString.Internal ( w2c )
 
 -- from utf8-string
 import Data.ByteString.Lazy.UTF8 ( toString, fromString )
@@ -160,7 +160,7 @@ findEntryByPath path archive = find (\e -> path == eRelativePath e) (zEntries ar
 fromEntry :: Entry -> B.ByteString
 fromEntry entry =
   let uncompressedData = decompressData (eCompressionMethod entry) (eCompressedData entry)
-  in  if eCRC32 entry == computeCRC32 uncompressedData
+  in  if eCRC32 entry == CRC32.crc32 uncompressedData
          then uncompressedData
          else error "CRC32 mismatch"
 
@@ -178,7 +178,7 @@ toEntry path modtime contents =
         if uncompressedSize <= compressedSize
            then (NoCompression, contents, uncompressedSize)
            else (Deflate, compressedData, compressedSize)
-      crc32 = CRC32.calc_crc32 $ map w2c $ B.unpack contents
+      crc32 = CRC32.crc32 contents
   in  Entry { eRelativePath            = path
             , eCompressionMethod       = compressionMethod
             , eLastModified            = modtime
@@ -273,9 +273,6 @@ zipifyFilePath path =
       (drive, dir') = splitDrive dir
       dirParts = splitDirectories dir'
   in  drive ++ (concat (map (++ "/") dirParts)) ++ fn
-
-computeCRC32 :: B.ByteString -> Word32
-computeCRC32 = CRC32.calc_crc32 . map w2c . B.unpack
 
 -- | Uncompress a lazy bytestring.
 compressData :: CompressionMethod -> B.ByteString -> B.ByteString
@@ -406,7 +403,7 @@ setFileTimeStamp file epochtime = do
 getArchive :: Get Archive
 getArchive = do
   locals <- many getLocalFile
-  files <- many (getFileHeader locals)
+  files <- many (getFileHeader (M.fromList locals))
   digSig <- lookAheadM getDigitalSignature
   endSig <- getWord32le
   unless (endSig == 0x06054b50) $ fail "Did not find end of central directory signature"
@@ -541,7 +538,7 @@ putLocalFile f = do
 -- >    extra field (variable size)
 -- >    file comment (variable size)
 
-getFileHeader :: [(Word32, B.ByteString)]  -- ^ list of (offset, content) pairs returned by getLocalFile
+getFileHeader :: M.Map Word32 B.ByteString -- ^ map of (offset, content) pairs returned by getLocalFile
               -> Get (Maybe Entry)
 getFileHeader locals = do
   sig <- lookAhead getWord32le
@@ -574,7 +571,7 @@ getFileHeader locals = do
        fileName <- getLazyByteString (toEnum $ fromEnum fileNameLength)
        extraField <- getLazyByteString (toEnum $ fromEnum extraFieldLength)
        fileComment <- getLazyByteString (toEnum $ fromEnum fileCommentLength)
-       compressedData <- case lookup relativeOffset locals of
+       compressedData <- case (M.lookup relativeOffset locals) of
                          Just x  -> return x
                          Nothing -> fail $ "Unable to find data at offset " ++ show relativeOffset
        return $ Just $ Entry

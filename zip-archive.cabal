@@ -1,5 +1,5 @@
 Name:                zip-archive
-Version:             0.1.1.1
+Version:             0.1.1.2
 Cabal-version:       >= 1.2
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
@@ -25,9 +25,8 @@ Library
     Build-depends:   base >= 3, pretty, containers
   else
     Build-depends:   base < 3
-  Build-depends:     binary, zlib, filepath, directory, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time
+  Build-depends:     binary, zlib, filepath, directory, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1
   Exposed-modules:   Codec.Archive.Zip
-  Other-modules:     Data.Hash.CRC32.GZip
   Hs-Source-Dirs:    .
   Ghc-Options:       -Wall
   Extensions:        CPP
@@ -42,4 +41,4 @@ Executable Zip
   else
     Buildable:       False
   Main-is:           Zip.hs
-  Ghc-Options:       -Wall
+  Ghc-Options:       -Wall -O2
