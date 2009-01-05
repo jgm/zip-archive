@@ -18,11 +18,3 @@ All code is under the following license unless otherwise noted:
 
    A copy of the license can be found in the file COPYING in the
    source distribution.   
-
------------------------------------------------------------------------------
-
-Data.Hash.CRC32.GZip is included from MissingH, to avoid inheriting
-MissingH's many dependencies. 
-Copyright (C) 2004-2006 John Goerzen <jgoerzen@complete.org>
-Released under the GPL as above.
-
