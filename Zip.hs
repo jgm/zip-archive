@@ -45,7 +45,7 @@ main = do
   progname <- getProgName
   let header = "Usage: " ++ progname ++ " [OPTION...] archive files..."
   (opts, args) <- case getOpt Permute options argv of
-      (o, _, _)      | Version `elem` o -> putStrLn "version 0.1" >> exitWith ExitSuccess
+      (o, _, _)      | Version `elem` o -> putStrLn "version 0.1.1.3" >> exitWith ExitSuccess
       (o, _, _)      | Help `elem` o    -> error $ usageInfo header options
       (o, (a:as), [])                   -> return (o, a:as)
       (_, _, errs)                      -> error $ concat errs ++ "\n" ++ usageInfo header options
