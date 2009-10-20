@@ -22,7 +22,7 @@ flag executable
 
 Library 
   if flag(splitBase)
-    Build-depends:   base >= 3, pretty, containers
+    Build-depends:   base >= 3 && < 5, pretty, containers
   else
     Build-depends:   base < 3
   Build-depends:     binary, zlib, filepath, directory, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1
