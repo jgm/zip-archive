@@ -65,7 +65,7 @@ import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
 import qualified Control.Monad.State as S
-import Control.Monad ( when, unless, zipWithM )
+import Control.Monad ( when, unless, zipWithM, liftM )
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
@@ -468,6 +468,12 @@ localFileSize f =
 --
 -- >    file name (variable size)
 -- >    extra field (variable size)
+--
+-- Note that if bit 3 of the general purpose bit flag is set, then the
+-- compressed size will be 0 and the size will be stored instead in a
+-- data descriptor record AFTER the file contents. The record normally
+-- begins with the signature 0x08074b50, then 4 bytes crc-32, 4 bytes
+-- compressed size, 4 bytes uncompressed size.
 
 getLocalFile :: Get (Maybe (Word32, B.ByteString))
 getLocalFile = do
@@ -478,7 +484,7 @@ getLocalFile = do
       offset <- bytesRead
       skip 4  -- signature
       skip 2  -- version
-      skip 2  -- general purpose bit flag
+      bitflag <- getWord16le
       skip 2  -- compressionMethod
       skip 2  -- last mod file time
       skip 2  -- last mod file date
@@ -491,7 +497,25 @@ getLocalFile = do
       extraFieldLength <- getWord16le
       skip (fromIntegral fileNameLength)  -- filename
       skip (fromIntegral extraFieldLength) -- extra field
-      compressedData <- getLazyByteString (fromIntegral compressedSize)
+      compressedData <- if bitflag .&. 0O10 == 0
+          then getLazyByteString (fromIntegral compressedSize)
+          else -- If bit 3 of general purpose bit flag is set,
+               -- then we need to read until we get to the
+               -- data descriptor record.  We assume that the
+               -- record has signature 0x08074b50; this is not required
+               -- by the specification but is common.
+               do raw <- many $ do
+                           s <- lookAhead getWord32le
+                           if s == 0x08074b50
+                              then return Nothing
+                              else liftM Just getWord8
+                  skip 4 -- signature
+                  skip 4 -- crc32
+                  cs <- getWord32le  -- compressed size
+                  skip 4 -- uncompressed size
+                  if fromIntegral cs == length raw
+                     then return $ B.pack raw
+                     else fail "Content size mismatch in data descriptor record" 
       return $ Just (fromIntegral offset, compressedData)
 
 putLocalFile :: Entry -> Put
