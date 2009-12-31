@@ -60,11 +60,9 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
 import Data.List ( nub, find )
-import Data.Maybe
 import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
-import qualified Control.Monad.State as S
 import Control.Monad ( when, unless, zipWithM, liftM )
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
@@ -427,7 +425,7 @@ putArchive archive = do
   let localFileSizes = map localFileSize $ zEntries archive
   let offsets = scanl (+) 0 localFileSizes
   let cdOffset = last offsets
-  zipWithM putFileHeader offsets (zEntries archive)
+  _ <- zipWithM putFileHeader offsets (zEntries archive)
   putDigitalSignature $ zSignature archive
   putWord32le 0x06054b50
   putWord16le 0 -- disk number
