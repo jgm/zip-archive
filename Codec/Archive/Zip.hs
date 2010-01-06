@@ -301,8 +301,15 @@ data MSDOSDateTime = MSDOSDateTime { msDOSDate :: Word16
                                    , msDOSTime :: Word16
                                    } deriving (Read, Show, Eq)
 
+-- | Epoch time corresponding to the minimum DOS DateTime (Jan 1 1980 00:00:00).
+minMSDOSDateTime :: Integer
+minMSDOSDateTime = 315532800
+
 -- | Convert a clock time to a MSDOS datetime.  The MSDOS time will be relative to UTC.
 epochTimeToMSDOSDateTime :: Integer -> MSDOSDateTime
+epochTimeToMSDOSDateTime epochtime | epochtime < minMSDOSDateTime =
+  epochTimeToMSDOSDateTime minMSDOSDateTime
+  -- if time is earlier than minimum DOS datetime, return minimum
 epochTimeToMSDOSDateTime epochtime =
   let ut = toUTCTime (TOD epochtime 0)
       dosTime = toEnum $ (ctSec ut `div` 2) + shiftL (ctMin ut) 5 + shiftL (ctHour ut) 11
