@@ -8,6 +8,7 @@ Description:         The zip-archive library provides functions for creating, mo
 Category:            Codec
 License:             GPL
 License-file:        LICENSE
+Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
 Build-Depends:       base
