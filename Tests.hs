@@ -41,7 +41,7 @@ testReadWriteArchive = TestCase $ do
   assertEqual "for writing and reading test1.zip" archive archive'
 
 testReadExternalZip = TestCase $ do
-  runCommand "zip -q -9 test-temp/test4.zip zip-archive.cabal Codec/Archive/Zip.hs" >>= waitForProcess
+  runCommand "/usr/bin/zip -q -9 test-temp/test4.zip zip-archive.cabal Codec/Archive/Zip.hs" >>= waitForProcess
   archive <- toArchive <$> B.readFile "test-temp/test4.zip"
   let files = filesInArchive archive
   assertEqual "for results of filesInArchive" ["zip-archive.cabal", "Codec/Archive/Zip.hs"] files
