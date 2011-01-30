@@ -268,9 +268,10 @@ zipifyFilePath :: FilePath -> String
 zipifyFilePath path =
   let dir = takeDirectory path
       fn  = takeFileName path
-      (drive, dir') = splitDrive dir
-      dirParts = splitDirectories dir'
-  in  drive ++ (concat (map (++ "/") dirParts)) ++ fn
+      (_drive, dir') = splitDrive dir
+      -- note: some versions of filepath return ["."] if no dir
+      dirParts = dropWhile (==".") $ splitDirectories dir'
+  in  (concat (map (++ "/") dirParts)) ++ fn
 
 -- | Uncompress a lazy bytestring.
 compressData :: CompressionMethod -> B.ByteString -> B.ByteString
