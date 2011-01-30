@@ -538,7 +538,8 @@ putLocalFile f = do
   putWord32le $ eCRC32 f
   putWord32le $ eCompressedSize f
   putWord32le $ eUncompressedSize f
-  putWord16le $ fromIntegral $ length $ eRelativePath f
+  putWord16le $ fromIntegral $ B.length $ fromString
+              $ zipifyFilePath $ eRelativePath f
   putWord16le $ fromIntegral $ B.length $ eExtraField f
   putLazyByteString $ fromString $ zipifyFilePath $ eRelativePath f
   putLazyByteString $ eExtraField f
@@ -637,7 +638,8 @@ putFileHeader offset local = do
   putWord32le $ eCRC32 local
   putWord32le $ eCompressedSize local
   putWord32le $ eUncompressedSize local
-  putWord16le $ fromIntegral $ length $ eRelativePath local
+  putWord16le $ fromIntegral $ B.length $ fromString
+              $ zipifyFilePath $ eRelativePath local
   putWord16le $ fromIntegral $ B.length $ eExtraField local
   putWord16le $ fromIntegral $ B.length $ eFileComment local
   putWord16le 0  -- disk number start
