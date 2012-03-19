@@ -578,7 +578,8 @@ getFileHeader locals = do
      else do
        skip 4 -- skip past signature
        skip 2 -- version made by
-       versionNeededToExtract <- getWord16le
+       versionNeededToExtract <- getWord8
+       skip 1 -- upper byte indicates OS part of "version needed to extract"
        unless (versionNeededToExtract <= 20) $
          fail "This archive requires zip >= 2.0 to extract."
        skip 2 -- general purpose bit flag
