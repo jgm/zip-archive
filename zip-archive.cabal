@@ -6,7 +6,7 @@ Synopsis:            Library for creating and modifying zip archives.
 Description:         The zip-archive library provides functions for creating, modifying,
                      and extracting files from zip archives.
 Category:            Codec
-License:             GPL
+License:             BSD3
 License-file:        LICENSE
 Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
