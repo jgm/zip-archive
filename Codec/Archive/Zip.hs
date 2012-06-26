@@ -3,7 +3,7 @@
 -- |
 -- Module      : Codec.Archive.Zip
 -- Copyright   : John MacFarlane
--- License     : GPL 2 (see LICENSE)
+-- License     : BSD3
 --
 -- Maintainer  : John MacFarlane < jgm at berkeley dot edu >
 -- Stability   : unstable

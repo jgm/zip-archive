@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------
 -- Zip.hs
 -- Copyright (c) 2008 John MacFarlane
--- License     : GPL 2 (see LICENSE)
+-- License     : BSD3 (see LICENSE)
 --
 -- This is a demonstration of the use of the 'Codec.Archive.Zip' library.
 -- It duplicates some of the functionality of the 'zip' command-line
