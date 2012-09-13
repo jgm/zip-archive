@@ -55,6 +55,9 @@ module Codec.Archive.Zip
        ) where
 
 import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..), TimeDiff (..) )
+#ifndef _DIRECTORY_1_1
+import Data.Time.Clock.POSIX ( utcTimeToPOSIXSeconds )
+#endif
 import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
@@ -199,7 +202,11 @@ readEntry opts path = do
   contents <- if isDir
                  then return B.empty
                  else B.readFile path
+#ifdef _DIRECTORY_1_1
   (TOD modEpochTime _) <- getModificationTime path
+#else
+  modEpochTime <- liftM (floor . utcTimeToPOSIXSeconds) $ getModificationTime path
+#endif
   let entry = toEntry path' modEpochTime contents
   when (OptVerbose `elem` opts) $ do
     let compmethod = case eCompressionMethod entry of
