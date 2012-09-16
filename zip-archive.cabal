@@ -20,13 +20,21 @@ flag splitBase
 flag executable
   Description:       Build the Zip executable.
   Default:           False
+flag directory11
+  Description:       Use version 1.1.x or earlier of the directory package
+  Default:           False
 
 Library 
   if flag(splitBase)
     Build-depends:   base >= 3 && < 5, pretty, containers
   else
     Build-depends:   base < 3
-  Build-depends:     binary, zlib, filepath, directory, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1
+  if flag(directory11)
+    Build-depends:   directory < 1.2
+    cpp-options:     -D_DIRECTORY_1_1
+  else
+    Build-depends:   directory >= 1.2, time
+  Build-depends:     binary, zlib, filepath, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1
   Exposed-modules:   Codec.Archive.Zip
   Hs-Source-Dirs:    .
   Ghc-Options:       -Wall
