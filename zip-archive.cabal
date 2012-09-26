@@ -1,5 +1,5 @@
 Name:                zip-archive
-Version:             0.1.1.8
+Version:             0.1.2
 Cabal-version:       >= 1.2
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
