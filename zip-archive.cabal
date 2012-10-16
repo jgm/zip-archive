@@ -1,6 +1,6 @@
 Name:                zip-archive
 Version:             0.1.2
-Cabal-version:       >= 1.2
+Cabal-Version:       >= 1.10
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
 Description:         The zip-archive library provides functions for creating, modifying,
@@ -12,7 +12,7 @@ Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
 Build-Depends:       base
-Extra-Source-Files:  Tests.hs, COPYING
+Extra-Source-Files:  COPYING
 
 flag splitBase
   Description:       Choose the new, smaller, split-up base package.
@@ -20,25 +20,17 @@ flag splitBase
 flag executable
   Description:       Build the Zip executable.
   Default:           False
-flag directory11
-  Description:       Use version 1.1.x or earlier of the directory package
-  Default:           False
 
-Library 
+Library
   if flag(splitBase)
     Build-depends:   base >= 3 && < 5, pretty, containers
   else
     Build-depends:   base < 3
-  if flag(directory11)
-    Build-depends:   directory < 1.2
-    cpp-options:     -D_DIRECTORY_1_1
-  else
-    Build-depends:   directory >= 1.2, time
-  Build-depends:     binary < 0.6, zlib, filepath, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1
+  Build-depends:     binary < 0.6, zlib, filepath, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1, directory, time
   Exposed-modules:   Codec.Archive.Zip
   Hs-Source-Dirs:    .
   Ghc-Options:       -Wall
-  Extensions:        CPP
+  Default-Extensions: CPP
   if os(windows)
     cpp-options:     -D_WINDOWS
   else
@@ -51,3 +43,12 @@ Executable Zip
     Buildable:       False
   Main-is:           Zip.hs
   Ghc-Options:       -Wall
+
+Test-Suite test-zip-archive
+  Type:           exitcode-stdio-1.0
+  Main-Is:        test-zip-archive.hs
+  Hs-Source-Dirs: tests
+  Build-Depends:  base >= 4.2 && < 5,
+                  directory, bytestring >= 0.9.0, process, time, old-time,
+                  HUnit, zip-archive
+  Ghc-Options:    -Wall
