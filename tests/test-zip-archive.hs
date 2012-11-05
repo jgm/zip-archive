@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 -- Test suite for Codec.Archive.Zip
 -- runghc Test.hs
 
