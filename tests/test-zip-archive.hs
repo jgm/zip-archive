@@ -6,9 +6,6 @@ import Codec.Archive.Zip
 import System.Directory
 import Test.HUnit.Base
 import Test.HUnit.Text
-#if MIN_VERSION_directory(1,2,0)
-import System.Time
-#endif
 import System.Process
 import qualified Data.ByteString.Lazy as B
 import Control.Applicative
