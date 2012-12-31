@@ -67,12 +67,12 @@ import Data.List ( nub, find )
 import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
-import Control.Monad ( when, unless, zipWithM, liftM )
+import Control.Monad ( when, unless, zipWithM )
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
-
+import Control.Applicative
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes )
 #endif
@@ -263,15 +263,6 @@ extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archiv
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
 
--- | Perform a sequence of actions until one returns Nothing;
--- return list of results.
-many :: Monad m => m (Maybe a) -> m [a]
-many p = do
-  r <- p
-  case r of
-       Just x  ->  many p >>= return . (x:)
-       Nothing -> return []
-
 -- Note that even on Windows, zip files use "/" internally as path separator.
 zipifyFilePath :: FilePath -> String
 zipifyFilePath path =
@@ -419,9 +410,10 @@ getArchive :: Get Archive
 getArchive = do
   locals <- many getLocalFile
   files <- many (getFileHeader (M.fromList locals))
-  digSig <- lookAheadM getDigitalSignature
+  digSig <- Just `fmap` getDigitalSignature <|> return Nothing
   endSig <- getWord32le
-  unless (endSig == 0x06054b50) $ fail "Did not find end of central directory signature"
+  unless (endSig == 0x06054b50)
+    $ fail "Did not find end of central directory signature"
   skip 2 -- disk number
   skip 2 -- disk number of central directory
   skip 2 -- num entries on this disk
@@ -490,48 +482,46 @@ localFileSize f =
 -- begins with the signature 0x08074b50, then 4 bytes crc-32, 4 bytes
 -- compressed size, 4 bytes uncompressed size.
 
-getLocalFile :: Get (Maybe (Word32, B.ByteString))
+getLocalFile :: Get (Word32, B.ByteString)
 getLocalFile = do
-  sig <- lookAhead getWord32le
-  if sig /= 0x04034b50
-    then return Nothing
-    else do
-      offset <- bytesRead
-      skip 4  -- signature
-      skip 2  -- version
-      bitflag <- getWord16le
-      skip 2  -- compressionMethod
-      skip 2  -- last mod file time
-      skip 2  -- last mod file date
-      skip 4  -- crc32
-      compressedSize <- getWord32le
-      when (compressedSize == 0xFFFFFFFF) $
-        fail "Can't read ZIP64 archive."
-      skip 4  -- uncompressedsize
-      fileNameLength <- getWord16le
-      extraFieldLength <- getWord16le
-      skip (fromIntegral fileNameLength)  -- filename
-      skip (fromIntegral extraFieldLength) -- extra field
-      compressedData <- if bitflag .&. 0O10 == 0
-          then getLazyByteString (fromIntegral compressedSize)
-          else -- If bit 3 of general purpose bit flag is set,
-               -- then we need to read until we get to the
-               -- data descriptor record.  We assume that the
-               -- record has signature 0x08074b50; this is not required
-               -- by the specification but is common.
-               do raw <- many $ do
-                           s <- lookAhead getWord32le
-                           if s == 0x08074b50
-                              then return Nothing
-                              else liftM Just getWord8
-                  skip 4 -- signature
-                  skip 4 -- crc32
-                  cs <- getWord32le  -- compressed size
-                  skip 4 -- uncompressed size
-                  if fromIntegral cs == length raw
-                     then return $ B.pack raw
-                     else fail "Content size mismatch in data descriptor record" 
-      return $ Just (fromIntegral offset, compressedData)
+  offset <- bytesRead
+  getWord32le >>= ensure (== 0x04034b50)
+  skip 2  -- version
+  bitflag <- getWord16le
+  skip 2  -- compressionMethod
+  skip 2  -- last mod file time
+  skip 2  -- last mod file date
+  skip 4  -- crc32
+  compressedSize <- getWord32le
+  when (compressedSize == 0xFFFFFFFF) $
+    fail "Can't read ZIP64 archive."
+  skip 4  -- uncompressedsize
+  fileNameLength <- getWord16le
+  extraFieldLength <- getWord16le
+  skip (fromIntegral fileNameLength)  -- filename
+  skip (fromIntegral extraFieldLength) -- extra field
+  compressedData <- if bitflag .&. 0O10 == 0
+      then getLazyByteString (fromIntegral compressedSize)
+      else -- If bit 3 of general purpose bit flag is set,
+           -- then we need to read until we get to the
+           -- data descriptor record.  We assume that the
+           -- record has signature 0x08074b50; this is not required
+           -- by the specification but is common.
+           do raw <- getWordsTilSig 0x08074b50
+              skip 4 -- crc32
+              cs <- getWord32le  -- compressed size
+              skip 4 -- uncompressed size
+              if fromIntegral cs == length raw
+                 then return $ B.pack raw
+                 else fail "Content size mismatch in data descriptor record" 
+  return (fromIntegral offset, compressedData)
+
+getWordsTilSig :: Word32 -> Get [Word8]
+getWordsTilSig sig =
+  (getWord32le >>= ensure (== sig) >> return []) <|>
+    do w <- getWord8
+       ws <- getWordsTilSig sig
+       return (w:ws)
 
 putLocalFile :: Entry -> Put
 putLocalFile f = do
@@ -579,57 +569,54 @@ putLocalFile f = do
 -- >    file comment (variable size)
 
 getFileHeader :: M.Map Word32 B.ByteString -- ^ map of (offset, content) pairs returned by getLocalFile
-              -> Get (Maybe Entry)
+              -> Get Entry
 getFileHeader locals = do
-  sig <- lookAhead getWord32le
-  if sig /= 0x02014b50
-     then return Nothing
-     else do
-       skip 4 -- skip past signature
-       skip 2 -- version made by
-       versionNeededToExtract <- getWord8
-       skip 1 -- upper byte indicates OS part of "version needed to extract"
-       unless (versionNeededToExtract <= 20) $
-         fail "This archive requires zip >= 2.0 to extract."
-       skip 2 -- general purpose bit flag
-       rawCompressionMethod <- getWord16le
-       compressionMethod <- case rawCompressionMethod of
-                             0 -> return NoCompression
-                             8 -> return Deflate
-                             _ -> fail $ "Unknown compression method " ++ show rawCompressionMethod
-       lastModFileTime <- getWord16le
-       lastModFileDate <- getWord16le
-       crc32 <- getWord32le
-       compressedSize <- getWord32le
-       uncompressedSize <- getWord32le
-       fileNameLength <- getWord16le
-       extraFieldLength <- getWord16le
-       fileCommentLength <- getWord16le
-       skip 2 -- disk number start
-       internalFileAttributes <- getWord16le
-       externalFileAttributes <- getWord32le
-       relativeOffset <- getWord32le
-       fileName <- getLazyByteString (toEnum $ fromEnum fileNameLength)
-       extraField <- getLazyByteString (toEnum $ fromEnum extraFieldLength)
-       fileComment <- getLazyByteString (toEnum $ fromEnum fileCommentLength)
-       compressedData <- case (M.lookup relativeOffset locals) of
-                         Just x  -> return x
-                         Nothing -> fail $ "Unable to find data at offset " ++ show relativeOffset
-       return $ Just $ Entry
-                 { eRelativePath            = toString fileName
-                 , eCompressionMethod       = compressionMethod
-                 , eLastModified            = msDOSDateTimeToEpochTime $
-                                              MSDOSDateTime { msDOSDate = lastModFileDate,
-                                                              msDOSTime = lastModFileTime }
-                 , eCRC32                   = crc32
-                 , eCompressedSize          = compressedSize
-                 , eUncompressedSize        = uncompressedSize
-                 , eExtraField              = extraField
-                 , eFileComment             = fileComment
-                 , eInternalFileAttributes  = internalFileAttributes
-                 , eExternalFileAttributes  = externalFileAttributes
-                 , eCompressedData          = compressedData
-                 }
+  getWord32le >>= ensure (== 0x02014b50)
+  skip 2 -- version made by
+  versionNeededToExtract <- getWord8
+  skip 1 -- upper byte indicates OS part of "version needed to extract"
+  unless (versionNeededToExtract <= 20) $
+    fail "This archive requires zip >= 2.0 to extract."
+  skip 2 -- general purpose bit flag
+  rawCompressionMethod <- getWord16le
+  compressionMethod <- case rawCompressionMethod of
+                        0 -> return NoCompression
+                        8 -> return Deflate
+                        _ -> fail $ "Unknown compression method " ++ show rawCompressionMethod
+  lastModFileTime <- getWord16le
+  lastModFileDate <- getWord16le
+  crc32 <- getWord32le
+  compressedSize <- getWord32le
+  uncompressedSize <- getWord32le
+  fileNameLength <- getWord16le
+  extraFieldLength <- getWord16le
+  fileCommentLength <- getWord16le
+  skip 2 -- disk number start
+  internalFileAttributes <- getWord16le
+  externalFileAttributes <- getWord32le
+  relativeOffset <- getWord32le
+  fileName <- getLazyByteString (toEnum $ fromEnum fileNameLength)
+  extraField <- getLazyByteString (toEnum $ fromEnum extraFieldLength)
+  fileComment <- getLazyByteString (toEnum $ fromEnum fileCommentLength)
+  compressedData <- case (M.lookup relativeOffset locals) of
+                    Just x  -> return x
+                    Nothing -> fail $ "Unable to find data at offset " ++
+                                        show relativeOffset
+  return $ Entry
+            { eRelativePath            = toString fileName
+            , eCompressionMethod       = compressionMethod
+            , eLastModified            = msDOSDateTimeToEpochTime $
+                                         MSDOSDateTime { msDOSDate = lastModFileDate,
+                                                         msDOSTime = lastModFileTime }
+            , eCRC32                   = crc32
+            , eCompressedSize          = compressedSize
+            , eUncompressedSize        = uncompressedSize
+            , eExtraField              = extraField
+            , eFileComment             = fileComment
+            , eInternalFileAttributes  = internalFileAttributes
+            , eExternalFileAttributes  = externalFileAttributes
+            , eCompressedData          = compressedData
+            }
 
 putFileHeader :: Word32        -- ^ offset
               -> Entry
@@ -666,14 +653,11 @@ putFileHeader offset local = do
 -- >     size of data                    2 bytes
 -- >     signature data (variable size)
 
-getDigitalSignature :: Get (Maybe B.ByteString)
+getDigitalSignature :: Get B.ByteString
 getDigitalSignature = do
-  hdrSig <- getWord32le
-  if hdrSig /= 0x08064b50
-     then return Nothing
-     else do
-        sigSize <- getWord16le
-        getLazyByteString (toEnum $ fromEnum sigSize) >>= return . Just
+  getWord32le >>= ensure (== 0x05054b50)
+  sigSize <- getWord16le
+  getLazyByteString (toEnum $ fromEnum sigSize)
 
 putDigitalSignature :: Maybe B.ByteString -> Put
 putDigitalSignature Nothing = return ()
@@ -681,3 +665,9 @@ putDigitalSignature (Just sig) = do
   putWord32le 0x08064b50
   putWord16le $ fromIntegral $ B.length sig
   putLazyByteString sig
+
+ensure :: (a -> Bool) -> a -> Get ()
+ensure p val =
+  if p val
+     then return ()
+     else fail "ensure not satisfied"
