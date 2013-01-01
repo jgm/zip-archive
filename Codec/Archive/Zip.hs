@@ -68,6 +68,9 @@ import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
 import Control.Monad ( when, unless, zipWithM )
+#if MIN_VERSION_directory(1,2,0)
+import Control.Monad ( liftM )
+#endif
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
