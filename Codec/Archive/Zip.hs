@@ -665,7 +665,7 @@ getDigitalSignature = do
 putDigitalSignature :: Maybe B.ByteString -> Put
 putDigitalSignature Nothing = return ()
 putDigitalSignature (Just sig) = do
-  putWord32le 0x08064b50
+  putWord32le 0x05054b50
   putWord16le $ fromIntegral $ B.length sig
   putLazyByteString sig
 
