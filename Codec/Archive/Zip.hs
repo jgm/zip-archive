@@ -696,7 +696,7 @@ getDigitalSignature = do
 getDigitalSignature :: Get (Maybe B.ByteString)
 getDigitalSignature = do
   hdrSig <- getWord32le
-  if hdrSig /= 0x08064b50
+  if hdrSig /= 0x05054b50
      then return Nothing
      else do
         sigSize <- getWord16le
@@ -706,7 +706,7 @@ getDigitalSignature = do
 putDigitalSignature :: Maybe B.ByteString -> Put
 putDigitalSignature Nothing = return ()
 putDigitalSignature (Just sig) = do
-  putWord32le 0x08064b50
+  putWord32le 0x05054b50
   putWord16le $ fromIntegral $ B.length sig
   putLazyByteString sig
 
