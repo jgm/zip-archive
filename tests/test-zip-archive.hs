@@ -36,7 +36,7 @@ main = do
 
 testReadWriteArchive :: Test
 testReadWriteArchive = TestCase $ do
-  archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "Codec"]
+  archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   B.writeFile "test-temp/test1.zip" $ fromArchive archive
   archive' <- toArchive <$> B.readFile "test-temp/test1.zip"
   assertEqual "for writing and reading test1.zip" archive archive'
@@ -44,10 +44,10 @@ testReadWriteArchive = TestCase $ do
 
 testReadExternalZip :: Test
 testReadExternalZip = TestCase $ do
-  _ <- runCommand "/usr/bin/zip -q -9 test-temp/test4.zip zip-archive.cabal Codec/Archive/Zip.hs" >>= waitForProcess
+  _ <- runCommand "/usr/bin/zip -q -9 test-temp/test4.zip zip-archive.cabal src/Codec/Archive/Zip.hs" >>= waitForProcess
   archive <- toArchive <$> B.readFile "test-temp/test4.zip"
   let files = filesInArchive archive
-  assertEqual "for results of filesInArchive" ["zip-archive.cabal", "Codec/Archive/Zip.hs"] files
+  assertEqual "for results of filesInArchive" ["zip-archive.cabal", "src/Codec/Archive/Zip.hs"] files
   cabalContents <- B.readFile "zip-archive.cabal"
   case findEntryByPath "zip-archive.cabal" archive of 
        Nothing  -> assertFailure "zip-archive.cabal not found in archive"
@@ -55,7 +55,7 @@ testReadExternalZip = TestCase $ do
 
 testFromToArchive :: Test
 testFromToArchive = TestCase $ do
-  archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "Codec"]
+  archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive (toArchive $ fromArchive archive)
 
 testReadWriteEntry :: Test
@@ -70,16 +70,16 @@ testReadWriteEntry = TestCase $ do
 
 testAddFilesOptions :: Test
 testAddFilesOptions = TestCase $ do
-  archive1 <- addFilesToArchive [OptVerbose] emptyArchive ["LICENSE", "Codec"]
-  archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "Codec"]
+  archive1 <- addFilesToArchive [OptVerbose] emptyArchive ["LICENSE", "src"]
+  archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "src"]
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
 
 testDeleteEntries :: Test
 testDeleteEntries = TestCase $ do
-  archive1 <- addFilesToArchive [] emptyArchive ["LICENSE", "Codec/"] 
+  archive1 <- addFilesToArchive [] emptyArchive ["LICENSE", "src"]
   let archive2 = deleteEntryFromArchive "LICENSE" archive1
-  let archive3 = deleteEntryFromArchive "Codec/" archive2
+  let archive3 = deleteEntryFromArchive "src" archive2
   assertEqual "for deleteFilesFromArchive" emptyArchive archive3
 
 testExtractFiles :: Test

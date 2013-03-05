@@ -32,7 +32,7 @@ Library
   Build-depends:     binary >= 0.5, zlib, filepath, bytestring >= 0.9.0, array, mtl, utf8-string >= 0.3.1, old-time, digest >= 0.0.0.1, directory, time
   Exposed-modules:   Codec.Archive.Zip
   Default-Language:  Haskell98
-  Hs-Source-Dirs:    .
+  Hs-Source-Dirs:    src
   Ghc-Options:       -Wall
   Default-Extensions: CPP
   if os(windows)
@@ -46,6 +46,9 @@ Executable Zip
   else
     Buildable:       False
   Main-is:           Zip.hs
+  Hs-Source-Dirs:    .
+  Build-Depends:     base >= 4.2 && < 5, directory >= 1.1, bytestring >= 0.9.0,
+                     zip-archive
   Ghc-Options:       -Wall
   Default-Language:  Haskell98
 
