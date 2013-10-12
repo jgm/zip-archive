@@ -28,6 +28,7 @@ main = do
                                 , testAddFilesOptions
                                 , testDeleteEntries
                                 , testExtractFiles
+                                , testExtractFilesToDirectory
                                 ]
   removeDirectoryRecursive "test-temp"
   exitWith $ case errors res of
@@ -97,4 +98,26 @@ testExtractFiles = TestCase $ do
   hello <- readFile "test-temp/dir1/dir2/hello"
   assertEqual "contents of test-temp/dir1/hi" hiMsg hi
   assertEqual "contents of test-temp/dir1/dir2/hello" helloMsg hello
+  removeDirectoryRecursive "test-temp"
+  createDirectory "test-temp"
+
+testExtractFilesToDirectory :: Test
+testExtractFilesToDirectory = TestCase $ do
+  createDirectory "test-temp/dir1"
+  createDirectory "test-temp/dir1/dir2"
+  let hiMsg = "hello there"
+  let helloMsg = "Hello there. This file is very long.  Longer than 31 characters."
+  writeFile "test-temp/dir1/hi" hiMsg
+  writeFile "test-temp/dir1/dir2/hello" helloMsg
+  archive <- addFilesToArchive [OptRecursive] emptyArchive ["test-temp/dir1"]
+  removeDirectoryRecursive "test-temp/dir1"
+  createDirectory "test-temp-target"
+  extractFilesToDirectory "test-temp-target" [OptVerbose] archive
+  hi <- readFile "test-temp-target/test-temp/dir1/hi"
+  hello <- readFile "test-temp-target/test-temp/dir1/dir2/hello"
+  assertEqual "contents of test-temp-target/test-temp/dir1/hi" hiMsg hi
+  assertEqual "contents of test-temp-target/test-temp/dir1/dir2/hello" helloMsg hello
+  removeDirectoryRecursive "test-temp"
+  removeDirectoryRecursive "test-temp-target"
+  createDirectory "test-temp"
 
