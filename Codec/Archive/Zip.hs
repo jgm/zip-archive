@@ -49,8 +49,10 @@ module Codec.Archive.Zip
        -- * IO functions for working with zip archives
        , readEntry
        , writeEntry
+       , writeEntryToDirectory
        , addFilesToArchive
        , extractFilesFromArchive
+       , extractFilesToDirectory
 
        ) where
 
@@ -238,8 +240,12 @@ readEntry opts path = do
 
 -- | Writes contents of an 'Entry' to a file.
 writeEntry :: [ZipOption] -> Entry -> IO ()
-writeEntry opts entry = do
-  let path = eRelativePath entry
+writeEntry = writeEntryToDirectory "."
+
+-- | Writes contents of an 'Entry' to a file in the directory you specify.
+writeEntryToDirectory :: FilePath -> [ZipOption] -> Entry -> IO ()
+writeEntryToDirectory targetFolder opts entry = do
+  let path = targetFolder ++ "/" ++ eRelativePath entry
   -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
@@ -275,7 +281,16 @@ addFilesToArchive opts archive files = do
 -- Note that the last-modified time is set correctly only in POSIX,
 -- not in Windows.
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
-extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archive
+extractFilesFromArchive = extractFilesToDirectory "."
+
+-- | Extract all files from an 'Archive', into the directory
+-- you specify, creating subdirectories as needed.
+-- If 'OptVerbose' is specified, print messages to stderr.
+-- Note that the last-modified time is set correctly only in POSIX,
+-- not in Windows.
+extractFilesToDirectory :: FilePath -> [ZipOption] -> Archive -> IO ()
+extractFilesToDirectory targetFolder opts archive =
+  mapM_ (writeEntryToDirectory targetFolder opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
