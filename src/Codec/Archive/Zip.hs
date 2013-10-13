@@ -136,6 +136,7 @@ data CompressionMethod = Deflate
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
                | OptVerbose                 -- ^ Print information to stderr
+               | OptDestination FilePath    -- ^ Directory in which to extract
                deriving (Read, Show, Eq)
 
 -- | A zip archive with no contents.
@@ -239,7 +240,9 @@ readEntry opts path = do
 -- | Writes contents of an 'Entry' to a file.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
-  let path = eRelativePath entry
+  let path = case [d | OptDestination d <- opts] of
+                  (x:_) -> x </> eRelativePath entry
+                  _     -> eRelativePath entry
   -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
@@ -275,7 +278,8 @@ addFilesToArchive opts archive files = do
 -- Note that the last-modified time is set correctly only in POSIX,
 -- not in Windows.
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
-extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archive
+extractFilesFromArchive opts archive =
+  mapM_ (writeEntry opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
