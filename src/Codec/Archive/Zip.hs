@@ -38,7 +38,9 @@ module Codec.Archive.Zip
 
        -- * Pure functions for working with zip archives
        , toArchive
+       , getArchive
        , fromArchive
+       , putArchive
        , filesInArchive
        , addEntryToArchive
        , deleteEntryFromArchive
@@ -427,6 +429,7 @@ setFileTimeStamp file epochtime = do
 -- >   .ZIP file comment length        2 bytes
 -- >   .ZIP file comment       (variable size)
 
+-- | Parses an 'Archive' in the 'Get' monad.
 getArchive :: Get Archive
 getArchive = do
 #if MIN_VERSION_binary(0, 6, 0)
@@ -455,6 +458,7 @@ getArchive = do
            , zComment                = zipComment
            }
 
+-- | Serialises an archive in the 'PutM' monad.
 putArchive :: Archive -> Put
 putArchive archive = do
   mapM_ putLocalFile $ zEntries archive
