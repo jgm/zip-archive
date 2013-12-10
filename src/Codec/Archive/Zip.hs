@@ -113,6 +113,10 @@ data Archive = Archive
                 , zComment                :: B.ByteString         -- ^ Comment for whole zip archive
                 } deriving (Read, Show)
 
+instance Binary Archive where
+  put = putArchive
+  get = getArchive
+
 -- | Representation of an archived file, including content and metadata.
 data Entry = Entry
                { eRelativePath            :: FilePath            -- ^ Relative path, using '/' as separator
@@ -148,11 +152,11 @@ emptyArchive = Archive
 
 -- | Reads an 'Archive' structure from a raw zip archive (in a lazy bytestring).
 toArchive :: B.ByteString -> Archive
-toArchive = runGet getArchive
+toArchive = decode
 
 -- | Writes an 'Archive' structure to a raw zip archive (in a lazy bytestring).
 fromArchive :: Archive -> B.ByteString
-fromArchive = runPut . putArchive
+fromArchive = encode
 
 -- | Returns a list of files in a zip archive.
 filesInArchive :: Archive -> [FilePath]
