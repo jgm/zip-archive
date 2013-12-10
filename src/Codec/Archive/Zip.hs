@@ -85,8 +85,9 @@ import System.Posix.Files ( setFileTimes )
 -- from bytestring
 import qualified Data.ByteString.Lazy as B
 
--- from utf8-string
-import Data.ByteString.Lazy.UTF8 ( toString, fromString )
+-- text
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
@@ -723,3 +724,9 @@ ensure p val =
   if p val
      then return ()
      else fail "ensure not satisfied"
+
+toString :: B.ByteString -> String
+toString = TL.unpack . TL.decodeUtf8
+
+fromString :: String -> B.ByteString
+fromString = TL.encodeUtf8 . TL.pack
