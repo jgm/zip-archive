@@ -142,6 +142,7 @@ data CompressionMethod = Deflate
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
                | OptVerbose                 -- ^ Print information to stderr
                | OptDestination FilePath    -- ^ Directory in which to extract
+               | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
                deriving (Read, Show, Eq)
 
 -- | A zip archive with no contents.
@@ -221,8 +222,11 @@ toEntry path modtime contents =
 readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
-  let path' = zipifyFilePath $ normalise $
-              path ++ if isDir then "/" else ""  -- make sure directories end with /
+  -- make sure directories end in / and deal with the OptLocation option
+  let path' = let p = zipifyFilePath $ normalise $ path ++ if isDir then "/" else "" in
+              (case [(l,a) | OptLocation l a <- opts] of
+                    ((l,a):_) -> if a then l </> p else l
+                    _         -> p)
   contents <- if isDir
                  then return B.empty
                  else B.readFile path
