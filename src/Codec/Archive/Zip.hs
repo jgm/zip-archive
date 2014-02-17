@@ -59,7 +59,7 @@ import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..
 import Data.Time.Clock.POSIX ( utcTimeToPOSIXSeconds )
 #else
 #endif
-import Data.Bits ( shiftL, shiftR, (.&.) )
+import Data.Bits ( shiftL, shiftR, (.&.), testBit, setBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
@@ -88,6 +88,8 @@ import qualified Data.ByteString.Lazy as B
 -- text
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
+import qualified Data.Encoding as DE
+import qualified Data.Encoding.CP437 as DE
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
@@ -121,6 +123,7 @@ instance Binary Archive where
 -- | Representation of an archived file, including content and metadata.
 data Entry = Entry
                { eRelativePath            :: FilePath            -- ^ Relative path, using '/' as separator
+               , eFileNameEncoding        :: FileNameEncoding    -- ^ File name encoding
                , eCompressionMethod       :: CompressionMethod   -- ^ Compression method
                , eLastModified            :: Integer             -- ^ Modification time (seconds since unix epoch)
                , eCRC32                   :: Word32              -- ^ CRC32 checksum
@@ -137,6 +140,11 @@ data Entry = Entry
 data CompressionMethod = Deflate
                        | NoCompression
                        deriving (Read, Show, Eq)
+
+-- | File name encoding
+data FileNameEncoding = CP437
+                      | UTF8
+                      deriving (Read, Show, Eq)
 
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
@@ -206,6 +214,7 @@ toEntry path modtime contents =
            else (Deflate, compressedData, compressedSize)
       crc32 = CRC32.crc32 contents
   in  Entry { eRelativePath            = path
+            , eFileNameEncoding        = UTF8
             , eCompressionMethod       = compressionMethod
             , eLastModified            = modtime
             , eCRC32                   = crc32
@@ -486,13 +495,13 @@ putArchive archive = do
 fileHeaderSize :: Entry -> Word32
 fileHeaderSize f =
   fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 +
-    fromIntegral (B.length $ fromString $ zipifyFilePath $ eRelativePath f) +
+    fromIntegral (B.length $ fromString (eFileNameEncoding f) $ zipifyFilePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eFileComment f)
 
 localFileSize :: Entry -> Word32
 localFileSize f =
   fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 +
-    fromIntegral (B.length $ fromString $ zipifyFilePath $ eRelativePath f) +
+    fromIntegral (B.length $ fromString (eFileNameEncoding f) $ zipifyFilePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eCompressedData f)
 
 -- Local file header:
@@ -573,7 +582,10 @@ putLocalFile :: Entry -> Put
 putLocalFile f = do
   putWord32le 0x04034b50
   putWord16le 20 -- version needed to extract (>=2.0)
-  putWord16le 2  -- general purpose bit flag (max compression)
+  -- general purpose bit flag (max compression)
+  putWord16le $ case eFileNameEncoding f of
+                     UTF8 -> 2 `setBit` 11
+                     CP437 -> 2
   putWord16le $ case eCompressionMethod f of
                      NoCompression -> 0
                      Deflate       -> 8
@@ -583,10 +595,10 @@ putLocalFile f = do
   putWord32le $ eCRC32 f
   putWord32le $ eCompressedSize f
   putWord32le $ eUncompressedSize f
-  putWord16le $ fromIntegral $ B.length $ fromString
+  putWord16le $ fromIntegral $ B.length $ fromString (eFileNameEncoding f)
               $ zipifyFilePath $ eRelativePath f
   putWord16le $ fromIntegral $ B.length $ eExtraField f
-  putLazyByteString $ fromString $ zipifyFilePath $ eRelativePath f
+  putLazyByteString $ fromString (eFileNameEncoding f) $ zipifyFilePath $ eRelativePath f
   putLazyByteString $ eExtraField f
   putLazyByteString $ eCompressedData f
 
@@ -623,7 +635,10 @@ getFileHeader locals = do
   skip 1 -- upper byte indicates OS part of "version needed to extract"
   unless (versionNeededToExtract <= 20) $
     fail "This archive requires zip >= 2.0 to extract."
-  skip 2 -- general purpose bit flag
+  bitFlags <- getWord16le -- general purpose bit flag
+  let encoding = if testBit bitFlags 11
+                 then UTF8
+                 else CP437
   rawCompressionMethod <- getWord16le
   compressionMethod <- case rawCompressionMethod of
                         0 -> return NoCompression
@@ -649,7 +664,8 @@ getFileHeader locals = do
                     Nothing -> fail $ "Unable to find data at offset " ++
                                         show relativeOffset
   return $ Entry
-            { eRelativePath            = toString fileName
+            { eRelativePath            = toString encoding fileName
+            , eFileNameEncoding        = encoding
             , eCompressionMethod       = compressionMethod
             , eLastModified            = msDOSDateTimeToEpochTime $
                                          MSDOSDateTime { msDOSDate = lastModFileDate,
@@ -671,7 +687,10 @@ putFileHeader offset local = do
   putWord32le 0x02014b50
   putWord16le 0  -- version made by
   putWord16le 20 -- version needed to extract (>= 2.0)
-  putWord16le 2  -- general purpose bit flag (max compression)
+  -- general purpose bit flag (max compression)
+  putWord16le $ case eFileNameEncoding local of
+                     UTF8 -> 2 `setBit` 11
+                     CP437 -> 2
   putWord16le $ case eCompressionMethod local of
                      NoCompression -> 0
                      Deflate       -> 8
@@ -681,7 +700,7 @@ putFileHeader offset local = do
   putWord32le $ eCRC32 local
   putWord32le $ eCompressedSize local
   putWord32le $ eUncompressedSize local
-  putWord16le $ fromIntegral $ B.length $ fromString
+  putWord16le $ fromIntegral $ B.length $ fromString (eFileNameEncoding local)
               $ zipifyFilePath $ eRelativePath local
   putWord16le $ fromIntegral $ B.length $ eExtraField local
   putWord16le $ fromIntegral $ B.length $ eFileComment local
@@ -689,7 +708,7 @@ putFileHeader offset local = do
   putWord16le $ eInternalFileAttributes local
   putWord32le $ eExternalFileAttributes local
   putWord32le offset
-  putLazyByteString $ fromString $ zipifyFilePath $ eRelativePath local
+  putLazyByteString $ fromString (eFileNameEncoding local) $ zipifyFilePath $ eRelativePath local
   putLazyByteString $ eExtraField local
   putLazyByteString $ eFileComment local
 
@@ -729,8 +748,13 @@ ensure p val =
      then return ()
      else fail "ensure not satisfied"
 
-toString :: B.ByteString -> String
-toString = TL.unpack . TL.decodeUtf8
 
-fromString :: String -> B.ByteString
-fromString = TL.encodeUtf8 . TL.pack
+toString :: FileNameEncoding -> B.ByteString -> String
+toString enc = case enc of
+               UTF8 -> TL.unpack . TL.decodeUtf8
+               CP437 -> DE.decodeLazyByteString DE.CP437
+
+fromString :: FileNameEncoding -> String -> B.ByteString
+fromString enc = case enc of
+               UTF8 -> TL.encodeUtf8 . TL.pack
+               CP437 -> DE.encodeLazyByteString DE.CP437
