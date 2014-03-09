@@ -1,3 +1,7 @@
+zip-archive 0.2.2
+  * Set bit 11 in the file header to insure other programs
+    recognize UTF-8 encoded file names
+
 zip-archive 0.2.1
 
   * Added OptLocation, to specify the path to which a file
