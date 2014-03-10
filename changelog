@@ -1,5 +1,5 @@
 zip-archive 0.2.2
-  * Set bit 11 in the file header to insure other programs
+  * Set bit 11 in the file header to ensure other programs
     recognize UTF-8 encoded file names
 
 zip-archive 0.2.1
