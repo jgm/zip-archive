@@ -553,20 +553,20 @@ getLocalFile = do
   return (fromIntegral offset, compressedData)
 
 getWordsTilSig :: Word32 -> Get [Word8]
-getWordsTilSig sig = do
+getWordsTilSig sig = go []
+  where
+    go acc = do
 #if MIN_VERSION_binary(0, 6, 0)
-  (getWord32le >>= ensure (== sig) >> return []) <|>
-    do w <- getWord8
-       ws <- getWordsTilSig sig
-       return (w:ws)
+      (getWord32le >>= ensure (== sig) >> return (reverse acc)) <|>
+        do w <- getWord8
+           go (w:acc)
 #else
-    sig' <- lookAhead getWord32le
-    if sig == sig'
-        then skip 4 >> return []
-        else do
-            w <- getWord8
-            ws <- getWordsTilSig sig
-            return (w:ws)
+      sig' <- lookAhead getWord32le
+      if sig == sig'
+          then skip 4 >> return (reverse acc)
+          else do
+              w <- getWord8
+              go (w:acc)
 #endif
 
 putLocalFile :: Entry -> Put
