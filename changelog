@@ -1,6 +1,11 @@
+zip-archive 0.2.2.1
+
+  * Fix a stack overflow in getWordsTillSig (Tristan Ravitch).
+
 zip-archive 0.2.2
+
   * Set bit 11 in the file header to ensure other programs
-    recognize UTF-8 encoded file names
+    recognize UTF-8 encoded file names (Tobias Brandt).
 
 zip-archive 0.2.1
 
