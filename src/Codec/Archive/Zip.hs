@@ -573,7 +573,7 @@ putLocalFile :: Entry -> Put
 putLocalFile f = do
   putWord32le 0x04034b50
   putWord16le 20 -- version needed to extract (>=2.0)
-  putWord16le 2  -- general purpose bit flag (max compression)
+  putWord16le 0x802  -- general purpose bit flag (bit 1 = max compression, bit 11 = UTF-8)
   putWord16le $ case eCompressionMethod f of
                      NoCompression -> 0
                      Deflate       -> 8
