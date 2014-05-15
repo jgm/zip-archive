@@ -38,6 +38,7 @@ module Codec.Archive.Zip
 
        -- * Pure functions for working with zip archives
        , toArchive
+       , toArchiveOrFail
        , fromArchive
        , filesInArchive
        , addEntryToArchive
@@ -155,6 +156,13 @@ emptyArchive = Archive
 -- | Reads an 'Archive' structure from a raw zip archive (in a lazy bytestring).
 toArchive :: B.ByteString -> Archive
 toArchive = decode
+
+-- | Like 'toArchive', but returns an 'Either' value instead of raising an error
+-- if the archive cannot be decoded.
+toArchiveOrFail :: B.ByteString -> Either String Archive
+toArchiveOrFail bs = case decodeOrFail bs of
+                           Left (_,_,e)  -> Left e
+                           Right (_,_,x) -> Right x
 
 -- | Writes an 'Archive' structure to a raw zip archive (in a lazy bytestring).
 fromArchive :: Archive -> B.ByteString
