@@ -34,7 +34,6 @@ Library
   Default-Language:  Haskell98
   Hs-Source-Dirs:    src
   Ghc-Options:       -Wall
-  Default-Extensions: CPP
   if os(windows)
     cpp-options:     -D_WINDOWS
   else
