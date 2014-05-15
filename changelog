@@ -1,3 +1,11 @@
+zip-archive 0.2.3
+
+  * Export new function `toArchiveOrFail`.  Closes #17.
+  * Set general purpose bit flag to use UTF8 in local file header.
+    Otherwise we get a mismatch between the flag in the central
+    directory and the flag in the local file header, which causes some
+    programs not to be able to extract the files.  Closes #19.
+
 zip-archive 0.2.2.1
 
   * Fix a stack overflow in getWordsTillSig (Tristan Ravitch).
