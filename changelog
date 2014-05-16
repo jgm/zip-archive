@@ -1,3 +1,9 @@
+zip-archive 0.2.3.2
+
+  * Removed lower bound on directory (>= 1.2), which caused build
+    failures with GHC 7.4 and 7.6.
+  * Added travis script for automatic testing on 3 GHC versions.
+
 zip-archive 0.2.3.1
 
   * Require binary >= 0.7 and directory >= 1.2.  The newer binary
