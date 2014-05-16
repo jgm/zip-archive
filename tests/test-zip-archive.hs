@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 -- Test suite for Codec.Archive.Zip
 -- runghc Test.hs
 
