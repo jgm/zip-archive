@@ -56,7 +56,9 @@ module Codec.Archive.Zip
        ) where
 
 import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..), TimeDiff (..) )
+#if MIN_VERSION_directory(1,2,0)
 import Data.Time.Clock.POSIX ( utcTimeToPOSIXSeconds )
+#endif
 import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
@@ -66,7 +68,6 @@ import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
 import Control.Monad ( when, unless, zipWithM )
-import Control.Monad ( liftM )
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
@@ -220,7 +221,7 @@ readEntry opts path = do
                  then return B.empty
                  else B.readFile path
 #if MIN_VERSION_directory(1,2,0)
-  modEpochTime <- liftM (floor . utcTimeToPOSIXSeconds)
+  modEpochTime <- fmap (floor . utcTimeToPOSIXSeconds)
                    $ getModificationTime path
 #else
   (TOD modEpochTime _) <- getModificationTime path

@@ -1,5 +1,5 @@
 Name:                zip-archive
-Version:             0.2.3.1
+Version:             0.2.3.2
 Cabal-Version:       >= 1.10
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
@@ -31,7 +31,7 @@ Library
     Build-depends:   base < 3
   Build-depends:     binary >= 0.7, zlib, filepath, bytestring >= 0.9.0,
                      array, mtl, text >= 0.11, old-time, digest >= 0.0.0.1,
-                     directory >= 1.2, time
+                     directory, time
   Exposed-modules:   Codec.Archive.Zip
   Default-Language:  Haskell98
   Hs-Source-Dirs:    src
