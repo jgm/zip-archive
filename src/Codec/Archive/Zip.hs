@@ -56,10 +56,7 @@ module Codec.Archive.Zip
        ) where
 
 import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..), TimeDiff (..) )
-#if MIN_VERSION_directory(1,2,0)
 import Data.Time.Clock.POSIX ( utcTimeToPOSIXSeconds )
-#else
-#endif
 import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
@@ -69,16 +66,12 @@ import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
 import Control.Monad ( when, unless, zipWithM )
-#if MIN_VERSION_directory(1,2,0)
 import Control.Monad ( liftM )
-#endif
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
-#if MIN_VERSION_binary(0, 6, 0)
 import Control.Applicative
-#endif
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes )
 #endif
@@ -92,18 +85,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
-
-#if !MIN_VERSION_binary(0, 6, 0)
-manySig :: Word32 -> Get a -> Get [a]
-manySig sig p = do
-    sig' <- lookAhead getWord32le
-    if sig == sig'
-        then do
-            r <- p
-            rs <- manySig sig p
-            return $ r : rs
-        else return []
-#endif
 
 ------------------------------------------------------------------------
 
@@ -446,15 +427,9 @@ setFileTimeStamp file epochtime = do
 
 getArchive :: Get Archive
 getArchive = do
-#if MIN_VERSION_binary(0, 6, 0)
   locals <- many getLocalFile
   files <- many (getFileHeader (M.fromList locals))
   digSig <- Just `fmap` getDigitalSignature <|> return Nothing
-#else
-  locals <- manySig 0x04034b50 getLocalFile
-  files <- manySig 0x02014b50 (getFileHeader (M.fromList locals))
-  digSig <- lookAheadM getDigitalSignature
-#endif
   endSig <- getWord32le
   unless (endSig == 0x06054b50)
     $ fail "Did not find end of central directory signature"
@@ -707,22 +682,11 @@ putFileHeader offset local = do
 -- >     size of data                    2 bytes
 -- >     signature data (variable size)
 
-#if MIN_VERSION_binary(0, 6, 0)
 getDigitalSignature :: Get B.ByteString
 getDigitalSignature = do
   getWord32le >>= ensure (== 0x05054b50)
   sigSize <- getWord16le
   getLazyByteString (toEnum $ fromEnum sigSize)
-#else
-getDigitalSignature :: Get (Maybe B.ByteString)
-getDigitalSignature = do
-  hdrSig <- getWord32le
-  if hdrSig /= 0x05054b50
-     then return Nothing
-     else do
-        sigSize <- getWord16le
-        getLazyByteString (toEnum $ fromEnum sigSize) >>= return . Just
-#endif
 
 putDigitalSignature :: Maybe B.ByteString -> Put
 putDigitalSignature Nothing = return ()
