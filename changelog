@@ -1,3 +1,10 @@
+zip-archive 0.2.3.1
+
+  * Require binary >= 0.7 and directory >= 1.2.  The newer binary
+    is needed to provide toArchiveOrFail.  The other change is
+    mainly for convenience, to avoid lots of ugly conditional
+    compilation.
+
 zip-archive 0.2.3
 
   * Export new function `toArchiveOrFail`.  Closes #17.
