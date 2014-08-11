@@ -1,4 +1,10 @@
-zip-archive 0.2.3.2
+zip-archive 0.2.3.4
+
+  * Make sure all path comparisons compare normalized paths.
+    So, findEntryByPath "foo" will find something stored as "./foo"
+    in the zip container.
+
+zip-archive 0.2.3.3
 
   * Better normalization of file paths:  "./foo/bar" and "foo/./bar"
     are now treated the same, for example.  Note that we do not

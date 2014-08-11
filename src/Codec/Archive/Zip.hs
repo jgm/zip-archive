@@ -164,14 +164,13 @@ addEntryToArchive entry archive =
 -- | Deletes an entry from a zip archive.
 deleteEntryFromArchive :: FilePath -> Archive -> Archive
 deleteEntryFromArchive path archive =
-  let path'      = normalizePath path
-      newEntries = filter (\e -> eRelativePath e /= path') $ zEntries archive
-  in  archive { zEntries = newEntries }
+  archive { zEntries = [e | e <- zEntries archive
+                       , not (eRelativePath e `matches` path)] }
 
 -- | Returns Just the zip entry with the specified path, or Nothing.
 findEntryByPath :: FilePath -> Archive -> Maybe Entry
 findEntryByPath path archive =
-  find (\e -> normalizePath path == eRelativePath e) (zEntries archive)
+  find (\e -> path `matches` eRelativePath e) (zEntries archive)
 
 -- | Returns uncompressed contents of zip entry.
 fromEntry :: Entry -> B.ByteString
@@ -214,7 +213,10 @@ readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
   -- make sure directories end in / and deal with the OptLocation option
-  let path' = let p = normalizePath $ path ++ if isDir then "/" else "" in
+  let path' = let p = path ++ (case reverse path of
+                                    ('/':_) -> ""
+                                    _ | isDir -> "/"
+                                      | otherwise -> "") in
               (case [(l,a) | OptLocation l a <- opts] of
                     ((l,a):_) -> if a then l </> p else l
                     _         -> p)
@@ -293,6 +295,10 @@ normalizePath path =
       -- note: some versions of filepath return ["."] if no dir
       dirParts = filter (/=".") $ splitDirectories dir'
   in  intercalate "/" (dirParts ++ [fn])
+
+-- Equality modulo normalization.  So, "./foo" `matches` "foo".
+matches :: FilePath -> FilePath -> Bool
+matches fp1 fp2 = normalizePath fp1 == normalizePath fp2
 
 -- | Uncompress a lazy bytestring.
 compressData :: CompressionMethod -> B.ByteString -> B.ByteString
