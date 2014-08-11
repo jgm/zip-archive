@@ -63,7 +63,7 @@ import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.List ( nub, find )
+import Data.List ( nub, find, intercalate )
 import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
@@ -164,13 +164,14 @@ addEntryToArchive entry archive =
 -- | Deletes an entry from a zip archive.
 deleteEntryFromArchive :: FilePath -> Archive -> Archive
 deleteEntryFromArchive path archive =
-  let path'      = zipifyFilePath path
+  let path'      = normalizePath path
       newEntries = filter (\e -> eRelativePath e /= path') $ zEntries archive
   in  archive { zEntries = newEntries }
 
 -- | Returns Just the zip entry with the specified path, or Nothing.
 findEntryByPath :: FilePath -> Archive -> Maybe Entry
-findEntryByPath path archive = find (\e -> path == eRelativePath e) (zEntries archive)
+findEntryByPath path archive =
+  find (\e -> normalizePath path == eRelativePath e) (zEntries archive)
 
 -- | Returns uncompressed contents of zip entry.
 fromEntry :: Entry -> B.ByteString
@@ -195,7 +196,7 @@ toEntry path modtime contents =
            then (NoCompression, contents, uncompressedSize)
            else (Deflate, compressedData, compressedSize)
       crc32 = CRC32.crc32 contents
-  in  Entry { eRelativePath            = path
+  in  Entry { eRelativePath            = normalizePath path
             , eCompressionMethod       = compressionMethod
             , eLastModified            = modtime
             , eCRC32                   = crc32
@@ -213,7 +214,7 @@ readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
   -- make sure directories end in / and deal with the OptLocation option
-  let path' = let p = zipifyFilePath $ normalise $ path ++ if isDir then "/" else "" in
+  let path' = let p = normalizePath $ path ++ if isDir then "/" else "" in
               (case [(l,a) | OptLocation l a <- opts] of
                     ((l,a):_) -> if a then l </> p else l
                     _         -> p)
@@ -284,14 +285,14 @@ extractFilesFromArchive opts archive =
 -- Internal functions for reading and writing zip binary format.
 
 -- Note that even on Windows, zip files use "/" internally as path separator.
-zipifyFilePath :: FilePath -> String
-zipifyFilePath path =
-  let dir = takeDirectory path
-      fn  = takeFileName path
+normalizePath :: FilePath -> String
+normalizePath path =
+  let dir   = takeDirectory path
+      fn    = takeFileName path
       (_drive, dir') = splitDrive dir
       -- note: some versions of filepath return ["."] if no dir
-      dirParts = dropWhile (==".") $ splitDirectories dir'
-  in  (concat (map (++ "/") dirParts)) ++ fn
+      dirParts = filter (/=".") $ splitDirectories dir'
+  in  intercalate "/" (dirParts ++ [fn])
 
 -- | Uncompress a lazy bytestring.
 compressData :: CompressionMethod -> B.ByteString -> B.ByteString
@@ -470,13 +471,13 @@ putArchive archive = do
 fileHeaderSize :: Entry -> Word32
 fileHeaderSize f =
   fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 +
-    fromIntegral (B.length $ fromString $ zipifyFilePath $ eRelativePath f) +
+    fromIntegral (B.length $ fromString $ normalizePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eFileComment f)
 
 localFileSize :: Entry -> Word32
 localFileSize f =
   fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 +
-    fromIntegral (B.length $ fromString $ zipifyFilePath $ eRelativePath f) +
+    fromIntegral (B.length $ fromString $ normalizePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eCompressedData f)
 
 -- Local file header:
@@ -568,9 +569,9 @@ putLocalFile f = do
   putWord32le $ eCompressedSize f
   putWord32le $ eUncompressedSize f
   putWord16le $ fromIntegral $ B.length $ fromString
-              $ zipifyFilePath $ eRelativePath f
+              $ normalizePath $ eRelativePath f
   putWord16le $ fromIntegral $ B.length $ eExtraField f
-  putLazyByteString $ fromString $ zipifyFilePath $ eRelativePath f
+  putLazyByteString $ fromString $ normalizePath $ eRelativePath f
   putLazyByteString $ eExtraField f
   putLazyByteString $ eCompressedData f
 
@@ -666,14 +667,14 @@ putFileHeader offset local = do
   putWord32le $ eCompressedSize local
   putWord32le $ eUncompressedSize local
   putWord16le $ fromIntegral $ B.length $ fromString
-              $ zipifyFilePath $ eRelativePath local
+              $ normalizePath $ eRelativePath local
   putWord16le $ fromIntegral $ B.length $ eExtraField local
   putWord16le $ fromIntegral $ B.length $ eFileComment local
   putWord16le 0  -- disk number start
   putWord16le $ eInternalFileAttributes local
   putWord32le $ eExternalFileAttributes local
   putWord32le offset
-  putLazyByteString $ fromString $ zipifyFilePath $ eRelativePath local
+  putLazyByteString $ fromString $ normalizePath $ eRelativePath local
   putLazyByteString $ eExtraField local
   putLazyByteString $ eFileComment local
 

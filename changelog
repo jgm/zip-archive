@@ -1,5 +1,11 @@
 zip-archive 0.2.3.2
 
+  * Better normalization of file paths:  "./foo/bar" and "foo/./bar"
+    are now treated the same, for example.  Note that we do not
+    yet treat "foo/../bar" and "bar" as the same.
+
+zip-archive 0.2.3.2
+
   * Removed lower bound on directory (>= 1.2), which caused build
     failures with GHC 7.4 and 7.6.
   * Added travis script for automatic testing on 3 GHC versions.
