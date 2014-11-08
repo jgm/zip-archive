@@ -1,3 +1,12 @@
+zip-archive 0.2.3.5
+
+  * Allow compilation with binary >= 0.5.  Note that toArchiveOrFail
+    is not safe when compiled against binary < 0.7; it will never
+    return a Left value, and will raise an error if parsing fails,
+    just like toArchive.  This is documented in the haddocks.
+    This is ugly, but justified by the need to have a version
+    of zip-archive that compiles against older versions of binary.
+
 zip-archive 0.2.3.4
 
   * Make sure all path comparisons compare normalized paths.

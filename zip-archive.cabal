@@ -1,5 +1,5 @@
 Name:                zip-archive
-Version:             0.2.3.4
+Version:             0.2.3.5
 Cabal-Version:       >= 1.10
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
@@ -31,7 +31,7 @@ Library
     Build-depends:   base >= 3 && < 5, pretty, containers
   else
     Build-depends:   base < 3
-  Build-depends:     binary >= 0.7, zlib, filepath, bytestring >= 0.9.0,
+  Build-depends:     binary >= 0.5, zlib, filepath, bytestring >= 0.9.0,
                      array, mtl, text >= 0.11, old-time, digest >= 0.0.0.1,
                      directory, time
   Exposed-modules:   Codec.Archive.Zip
