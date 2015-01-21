@@ -12,7 +12,6 @@ License-file:        LICENSE
 Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
-Build-Depends:       base
 Extra-Source-Files:  changelog, README.markdown
 
 Source-repository    head
