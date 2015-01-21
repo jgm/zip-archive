@@ -1,3 +1,8 @@
+zip-archive 0.2.3.6
+
+  * Removed hard-coded path to zip in test suite (#21).
+  * Removed misplaced build-depends in cabal file.
+
 zip-archive 0.2.3.5
 
   * Allow compilation with binary >= 0.5.  Note that toArchiveOrFail
