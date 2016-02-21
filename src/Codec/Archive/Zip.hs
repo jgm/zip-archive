@@ -76,7 +76,7 @@ import qualified Data.Map as M
 import Control.Applicative
 #endif
 #ifndef _WINDOWS
-import System.Posix.Files ( setFileTimes )
+import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getFileStatus )
 #endif
 
 -- from bytestring
@@ -139,6 +139,7 @@ data CompressionMethod = Deflate
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
                | OptVerbose                 -- ^ Print information to stderr
+               | OptAttributes              -- ^ Preserve files attributes
                | OptDestination FilePath    -- ^ Directory in which to extract
                | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
                deriving (Read, Show, Eq)
@@ -252,14 +253,29 @@ readEntry opts path = do
   (TOD modEpochTime _) <- getModificationTime path
 #endif
   let entry = toEntry path' modEpochTime contents
+
+  entryE <-
+#ifdef _WINDOWS
+      return $ entry
+#else
+    if OptAttributes `elem` opts
+      then do fm <- fmap fileMode $ getFileStatus path'
+              let modes = fromIntegral $ toInteger $
+                              shiftL fm 16
+              return $ entry {
+                     eExternalFileAttributes = modes
+                 }
+      else return $ entry
+#endif
+
   when (OptVerbose `elem` opts) $ do
-    let compmethod = case eCompressionMethod entry of
+    let compmethod = case eCompressionMethod entryE of
                      Deflate       -> "deflated"
                      NoCompression -> "stored"
     hPutStrLn stderr $
-      printf "  adding: %s (%s %.f%%)" (eRelativePath entry)
-      compmethod (100 - (100 * compressionRatio entry))
-  return entry
+      printf "  adding: %s (%s %.f%%)" (eRelativePath entryE)
+      compmethod (100 - (100 * compressionRatio entryE))
+  return entryE
 
 -- | Writes contents of an 'Entry' to a file.
 writeEntry :: [ZipOption] -> Entry -> IO ()
@@ -282,6 +298,14 @@ writeEntry opts entry = do
                                  Deflate       -> " inflating: " ++ path
                                  NoCompression -> "extracting: " ++ path
        B.writeFile path (fromEntry entry)
+#ifndef _WINDOWS
+       when (OptAttributes `elem` opts) $ do
+         let modes = fromIntegral $ toInteger $
+                           shiftR (eExternalFileAttributes entry) 16
+         when (modes /= 0) $ do
+             setFileMode path modes
+#endif
+
   -- Note that last modified times are supported only for POSIX, not for
   -- Windows.
   setFileTimeStamp path (eLastModified entry)
