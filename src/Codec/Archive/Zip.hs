@@ -258,7 +258,7 @@ readEntry opts path = do
       return $ entry
 #else
       do fm <- fmap fileMode $ getFileStatus path'
-         let modes = fromIntegral $ toInteger $ shiftL fm 16
+         let modes = fromIntegral $ shiftL (toInteger fm) 16
          return $ entry { eExternalFileAttributes = modes }
 #endif
 
