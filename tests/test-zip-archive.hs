@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE CPP #-}
 -- Test suite for Codec.Archive.Zip
 -- runghc Test.hs
 
@@ -10,6 +11,10 @@ import System.Process
 import qualified Data.ByteString.Lazy as B
 import Control.Applicative
 import System.Exit
+
+#ifndef _WINDOWS
+import System.Posix.Files
+#endif
 
 -- define equality for Archives so timestamps aren't distinguished if they
 -- correspond to the same MSDOS datetime.
@@ -29,6 +34,7 @@ main = do
                                 , testAddFilesOptions
                                 , testDeleteEntries
                                 , testExtractFiles
+                                , testExtractFilesWithPosixAttrs
                                 ]
   removeDirectoryRecursive "test-temp"
   exitWith $ case errors res of
@@ -99,3 +105,21 @@ testExtractFiles = TestCase $ do
   assertEqual "contents of test-temp/dir1/hi" hiMsg hi
   assertEqual "contents of test-temp/dir1/dir2/hello" helloMsg hello
 
+testExtractFilesWithPosixAttrs :: Test
+testExtractFilesWithPosixAttrs = TestCase $ do
+#ifndef _WINDOWS
+  createDirectory "test-temp/dir3"
+  let hiMsg = "hello there"
+  writeFile "test-temp/dir3/hi" hiMsg
+  let perms = unionFileModes ownerReadMode $ unionFileModes ownerWriteMode ownerExecuteMode
+  setFileMode "test-temp/dir3/hi" perms
+  archive <- addFilesToArchive [OptRecursive, OptAttributes] emptyArchive ["test-temp/dir3"]
+  removeDirectoryRecursive "test-temp/dir3"
+  extractFilesFromArchive [OptVerbose, OptAttributes] archive
+  hi <- readFile "test-temp/dir3/hi"
+  fm <- fmap fileMode $ getFileStatus "test-temp/dir3/hi"
+  assertEqual "file modes" (intersectFileModes perms fm)  perms
+  assertEqual "contents of test-temp/dir3/hi" hiMsg hi
+#else
+  return ()
+#endif
