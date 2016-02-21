@@ -113,9 +113,9 @@ testExtractFilesWithPosixAttrs = TestCase $ do
   writeFile "test-temp/dir3/hi" hiMsg
   let perms = unionFileModes ownerReadMode $ unionFileModes ownerWriteMode ownerExecuteMode
   setFileMode "test-temp/dir3/hi" perms
-  archive <- addFilesToArchive [OptRecursive, OptAttributes] emptyArchive ["test-temp/dir3"]
+  archive <- addFilesToArchive [OptRecursive] emptyArchive ["test-temp/dir3"]
   removeDirectoryRecursive "test-temp/dir3"
-  extractFilesFromArchive [OptVerbose, OptAttributes] archive
+  extractFilesFromArchive [OptVerbose] archive
   hi <- readFile "test-temp/dir3/hi"
   fm <- fmap fileMode $ getFileStatus "test-temp/dir3/hi"
   assertEqual "file modes" (intersectFileModes perms fm)  perms

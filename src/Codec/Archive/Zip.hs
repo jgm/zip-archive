@@ -139,7 +139,6 @@ data CompressionMethod = Deflate
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
                | OptVerbose                 -- ^ Print information to stderr
-               | OptAttributes              -- ^ Preserve files attributes
                | OptDestination FilePath    -- ^ Directory in which to extract
                | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
                deriving (Read, Show, Eq)
@@ -258,14 +257,9 @@ readEntry opts path = do
 #ifdef _WINDOWS
       return $ entry
 #else
-    if OptAttributes `elem` opts
-      then do fm <- fmap fileMode $ getFileStatus path'
-              let modes = fromIntegral $ toInteger $
-                              shiftL fm 16
-              return $ entry {
-                     eExternalFileAttributes = modes
-                 }
-      else return $ entry
+      do fm <- fmap fileMode $ getFileStatus path'
+         let modes = fromIntegral $ toInteger $ shiftL fm 16
+         return $ entry { eExternalFileAttributes = modes }
 #endif
 
   when (OptVerbose `elem` opts) $ do
@@ -299,11 +293,10 @@ writeEntry opts entry = do
                                  NoCompression -> "extracting: " ++ path
        B.writeFile path (fromEntry entry)
 #ifndef _WINDOWS
-       when (OptAttributes `elem` opts) $ do
-         let modes = fromIntegral $ toInteger $
-                           shiftR (eExternalFileAttributes entry) 16
-         when (modes /= 0) $ do
-             setFileMode path modes
+       let modes = fromIntegral $ toInteger $
+                         shiftR (eExternalFileAttributes entry) 16
+       when (modes /= 0) $ do
+           setFileMode path modes
 #endif
 
   -- Note that last modified times are supported only for POSIX, not for
