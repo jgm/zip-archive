@@ -34,7 +34,9 @@ main = do
                                 , testAddFilesOptions
                                 , testDeleteEntries
                                 , testExtractFiles
+#ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
+#endif
                                 ]
   removeDirectoryRecursive "test-temp"
   exitWith $ case errors res of
@@ -107,7 +109,6 @@ testExtractFiles = TestCase $ do
 
 testExtractFilesWithPosixAttrs :: Test
 testExtractFilesWithPosixAttrs = TestCase $ do
-#ifndef _WINDOWS
   createDirectory "test-temp/dir3"
   let hiMsg = "hello there"
   writeFile "test-temp/dir3/hi" hiMsg
@@ -118,8 +119,5 @@ testExtractFilesWithPosixAttrs = TestCase $ do
   extractFilesFromArchive [OptVerbose] archive
   hi <- readFile "test-temp/dir3/hi"
   fm <- fmap fileMode $ getFileStatus "test-temp/dir3/hi"
-  assertEqual "file modes" (intersectFileModes perms fm)  perms
+  assertEqual "file modes" (intersectFileModes perms fm) perms
   assertEqual "contents of test-temp/dir3/hi" hiMsg hi
-#else
-  return ()
-#endif
