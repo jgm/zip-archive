@@ -39,7 +39,7 @@ main = do
 #endif
                                 ]
   removeDirectoryRecursive "test-temp"
-  exitWith $ case errors res of
+  exitWith $ case (failures res + errors res) of
                      0 -> ExitSuccess
                      n -> ExitFailure n
 
