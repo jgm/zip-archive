@@ -119,5 +119,5 @@ testExtractFilesWithPosixAttrs = TestCase $ do
   extractFilesFromArchive [OptVerbose] archive
   hi <- readFile "test-temp/dir3/hi"
   fm <- fmap fileMode $ getFileStatus "test-temp/dir3/hi"
-  assertEqual "file modes" (intersectFileModes perms fm) perms
+  assertEqual "file modes" perms (intersectFileModes perms fm)
   assertEqual "contents of test-temp/dir3/hi" hiMsg hi
