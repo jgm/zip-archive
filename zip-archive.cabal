@@ -64,3 +64,7 @@ Test-Suite test-zip-archive
   Default-Language:  Haskell98
   Ghc-Options:    -Wall
   Build-Tools:    zip
+  if os(windows)
+    cpp-options:     -D_WINDOWS
+  else
+    Build-depends:   unix
