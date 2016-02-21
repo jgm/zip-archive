@@ -1,0 +1,9 @@
+resolver: lts-5.3
+packages:
+- '.'
+extra-deps: []
+flags:
+  zip-archive:
+    splitbase: true
+    executable: false
+extra-package-dbs: []
