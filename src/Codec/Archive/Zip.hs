@@ -197,10 +197,7 @@ findEntryByPath path archive =
 -- | Returns uncompressed contents of zip entry.
 fromEntry :: Entry -> B.ByteString
 fromEntry entry =
-  let uncompressedData = decompressData (eCompressionMethod entry) (eCompressedData entry)
-  in  if eCRC32 entry == CRC32.crc32 uncompressedData
-         then uncompressedData
-         else error "CRC32 mismatch"
+  decompressData (eCompressionMethod entry) (eCompressedData entry)
 
 -- | Create an 'Entry' with specified file path, modification time, and contents.
 toEntry :: FilePath         -- ^ File path for entry
@@ -291,7 +288,10 @@ writeEntry opts entry = do
          hPutStrLn stderr $ case eCompressionMethod entry of
                                  Deflate       -> " inflating: " ++ path
                                  NoCompression -> "extracting: " ++ path
-       B.writeFile path (fromEntry entry)
+       let uncompressedData = fromEntry entry
+       if eCRC32 entry == CRC32.crc32 uncompressedData
+          then B.writeFile path uncompressedData
+          else hPutStrLn stderr $ "CRC32 mismatch on " ++ path
 #ifndef _WINDOWS
        let modes = fromIntegral $ toInteger $
                          shiftR (eExternalFileAttributes entry) 16
