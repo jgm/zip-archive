@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 ------------------------------------------------------------------------
 -- |
 -- Module      : Codec.Archive.Zip
@@ -65,6 +66,8 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
 import Data.List ( nub, find, intercalate )
+import Data.Data (Data)
+import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
@@ -147,7 +150,7 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
 
 data ZipException =
   CRC32Mismatch FilePath
-  deriving Show
+  deriving (Show, Typeable, Data)
 
 instance E.Exception ZipException
 
