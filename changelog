@@ -1,3 +1,14 @@
+zip-archive 0.2.4
+
+  * Support preservation of file modes on Posix (Dan Aloni).
+  * Export `ZipException` (API change).
+  * `fromEntry` no longer checks for CRC32 match.  Previously, it issued
+    `error` if the match failed.  CRC32 match is now checked in `writeEntry`
+    instead, and a `CRC32Exception` is raised if the checksum doesn't match.
+  * Test suite: return nonzero status if there are test failures.
+    Previously we mistakenly did this only on 'errors', not failures.
+  * Use .travis.yml that builds on both stack and cabal.
+
 zip-archive 0.2.3.7
 
   * Declared test suite's dependency on 'zip' using custom Setup.lhs (#21,#22).
