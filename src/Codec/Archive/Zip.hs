@@ -34,6 +34,7 @@ module Codec.Archive.Zip
        , Entry (..)
        , CompressionMethod (..)
        , ZipOption (..)
+       , ZipException (..)
        , emptyArchive
 
        -- * Pure functions for working with zip archives
@@ -68,6 +69,7 @@ import Text.Printf
 import System.FilePath
 import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
 import Control.Monad ( when, unless, zipWithM )
+import qualified Control.Exception as E
 import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
@@ -142,6 +144,12 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
                | OptDestination FilePath    -- ^ Directory in which to extract
                | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
                deriving (Read, Show, Eq)
+
+data ZipException =
+  CRC32Mismatch FilePath
+  deriving Show
+
+instance E.Exception ZipException
 
 -- | A zip archive with no contents.
 emptyArchive :: Archive
@@ -268,7 +276,9 @@ readEntry opts path = do
       compmethod (100 - (100 * compressionRatio entryE))
   return entryE
 
--- | Writes contents of an 'Entry' to a file.
+-- | Writes contents of an 'Entry' to a file.  Throws a
+-- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
+-- does not match the uncompressed data.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   let path = case [d | OptDestination d <- opts] of
@@ -291,7 +301,7 @@ writeEntry opts entry = do
        let uncompressedData = fromEntry entry
        if eCRC32 entry == CRC32.crc32 uncompressedData
           then B.writeFile path uncompressedData
-          else hPutStrLn stderr $ "CRC32 mismatch on " ++ path
+          else E.throwIO $ CRC32Mismatch path
 #ifndef _WINDOWS
        let modes = fromIntegral $ toInteger $
                          shiftR (eExternalFileAttributes entry) 16
