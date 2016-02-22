@@ -303,10 +303,8 @@ writeEntry opts entry = do
           then B.writeFile path uncompressedData
           else E.throwIO $ CRC32Mismatch path
 #ifndef _WINDOWS
-       let modes = fromIntegral $ toInteger $
-                         shiftR (eExternalFileAttributes entry) 16
-       when (modes /= 0) $ do
-           setFileMode path modes
+       let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
+       when (modes /= 0) $ setFileMode path modes
 #endif
 
   -- Note that last modified times are supported only for POSIX, not for
