@@ -7,6 +7,7 @@ zip-archive 0.2.4
     instead, and a `CRC32Exception` is raised if the checksum doesn't match.
   * Test suite: return nonzero status if there are test failures.
     Previously we mistakenly did this only on 'errors', not failures.
+  * Test suite: don't use -9 with zip as it isn't always available.
   * Use .travis.yml that builds on both stack and cabal.
 
 zip-archive 0.2.3.7
