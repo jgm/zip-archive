@@ -94,6 +94,13 @@ import qualified Data.Text.Lazy.Encoding as TL
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
 
+versionMadeBy :: Word16
+#ifdef _WINDOWS
+versionMadeBy = 0x0000 -- FAT/VFAT/VFAT32 file attributes
+#else
+versionMadeBy = 0x0300 -- UNIX file attributes
+#endif
+
 #if !MIN_VERSION_binary(0, 6, 0)
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
@@ -716,7 +723,7 @@ putFileHeader :: Word32        -- ^ offset
               -> Put
 putFileHeader offset local = do
   putWord32le 0x02014b50
-  putWord16le 0  -- version made by
+  putWord16le versionMadeBy
   putWord16le 20 -- version needed to extract (>= 2.0)
   putWord16le 0x802  -- general purpose bit flag (bit 1 = max compression, bit 11 = UTF-8)
   putWord16le $ case eCompressionMethod local of
