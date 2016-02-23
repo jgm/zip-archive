@@ -138,6 +138,7 @@ data Entry = Entry
                , eUncompressedSize        :: Word32              -- ^ Uncompressed size in bytes
                , eExtraField              :: B.ByteString        -- ^ Extra field - unused by this library
                , eFileComment             :: B.ByteString        -- ^ File comment - unused by this library
+               , eVersionMadeBy           :: Word16              -- ^ Version made by field
                , eInternalFileAttributes  :: Word16              -- ^ Internal file attributes - unused by this library
                , eExternalFileAttributes  :: Word32              -- ^ External file attributes (system-dependent)
                , eCompressedData          :: B.ByteString        -- ^ Compressed contents of file
@@ -240,6 +241,7 @@ toEntry path modtime contents =
             , eUncompressedSize        = fromIntegral uncompressedSize
             , eExtraField              = B.empty
             , eFileComment             = B.empty
+            , eVersionMadeBy           = versionMadeBy
             , eInternalFileAttributes  = 0  -- potentially non-text
             , eExternalFileAttributes  = 0  -- appropriate if from stdin
             , eCompressedData          = finalData
@@ -269,13 +271,12 @@ readEntry opts path = do
   let entry = toEntry path' modEpochTime contents
 
   entryE <-
-#ifdef _WINDOWS
-      return $ entry
-#else
-      do fm <- fmap fileMode $ getFileStatus path'
-         let modes = fromIntegral $ shiftL (toInteger fm) 16
-         return $ entry { eExternalFileAttributes = modes }
-#endif
+      if versionMadeBy == 0x0300 then -- UNIX
+        do fm <- fmap fileMode $ getFileStatus path'
+           let modes = fromIntegral $ shiftL (toInteger fm) 16
+           return $ entry { eExternalFileAttributes = modes }
+      else
+        return $ entry
 
   when (OptVerbose `elem` opts) $ do
     let compmethod = case eCompressionMethod entryE of
@@ -312,10 +313,8 @@ writeEntry opts entry = do
        if eCRC32 entry == CRC32.crc32 uncompressedData
           then B.writeFile path uncompressedData
           else E.throwIO $ CRC32Mismatch path
-#ifndef _WINDOWS
        let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
-       when (modes /= 0) $ setFileMode path modes
-#endif
+       when (versionMadeBy == 0x0300 && modes /= 0) $ setFileMode path modes
 
   -- Note that last modified times are supported only for POSIX, not for
   -- Windows.
@@ -672,7 +671,7 @@ getFileHeader :: M.Map Word32 B.ByteString -- ^ map of (offset, content) pairs r
               -> Get Entry
 getFileHeader locals = do
   getWord32le >>= ensure (== 0x02014b50)
-  skip 2 -- version made by
+  vmb <- getWord16le  -- version made by
   versionNeededToExtract <- getWord8
   skip 1 -- upper byte indicates OS part of "version needed to extract"
   unless (versionNeededToExtract <= 20) $
@@ -713,6 +712,7 @@ getFileHeader locals = do
             , eUncompressedSize        = uncompressedSize
             , eExtraField              = extraField
             , eFileComment             = fileComment
+            , eVersionMadeBy           = vmb
             , eInternalFileAttributes  = internalFileAttributes
             , eExternalFileAttributes  = externalFileAttributes
             , eCompressedData          = compressedData
@@ -723,7 +723,7 @@ putFileHeader :: Word32        -- ^ offset
               -> Put
 putFileHeader offset local = do
   putWord32le 0x02014b50
-  putWord16le versionMadeBy
+  putWord16le $ eVersionMadeBy local
   putWord16le 20 -- version needed to extract (>= 2.0)
   putWord16le 0x802  -- general purpose bit flag (bit 1 = max compression, bit 11 = UTF-8)
   putWord16le $ case eCompressionMethod local of
