@@ -271,12 +271,13 @@ readEntry opts path = do
   let entry = toEntry path' modEpochTime contents
 
   entryE <-
-      if versionMadeBy == 0x0300 then -- UNIX
+#ifdef _WINDOWS
+        return $ entry
+#else
         do fm <- fmap fileMode $ getFileStatus path'
            let modes = fromIntegral $ shiftL (toInteger fm) 16
            return $ entry { eExternalFileAttributes = modes }
-      else
-        return $ entry
+#endif
 
   when (OptVerbose `elem` opts) $ do
     let compmethod = case eCompressionMethod entryE of
@@ -313,8 +314,11 @@ writeEntry opts entry = do
        if eCRC32 entry == CRC32.crc32 uncompressedData
           then B.writeFile path uncompressedData
           else E.throwIO $ CRC32Mismatch path
+#ifndef _WINDOWS
        let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
-       when (versionMadeBy == 0x0300 && modes /= 0) $ setFileMode path modes
+       when (eVersionMadeBy entry == 0x0300 &&
+             modes /= 0) $ setFileMode path modes
+#endif
 
   -- Note that last modified times are supported only for POSIX, not for
   -- Windows.
