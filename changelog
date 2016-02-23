@@ -1,6 +1,6 @@
 zip-archive 0.2.4
 
-  * Support preservation of file modes on Posix (Dan Aloni).
+  * Support preservation of file modes on Posix (Dan Aloni, #26).
   * Export `ZipException` (API change).
   * `fromEntry` no longer checks for CRC32 match.  Previously, it issued
     `error` if the match failed.  CRC32 match is now checked in `writeEntry`
