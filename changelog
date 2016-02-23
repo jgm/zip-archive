@@ -1,4 +1,4 @@
-zip-archive 0.2.4
+zip-archive 0.3
 
   * Support preservation of file modes on Posix (Dan Aloni, #26).
   * Add `eVersionMadeBy` field to `Entry` (API change).
