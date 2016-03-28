@@ -1,3 +1,10 @@
+zip-archive 0.3.0.1
+
+  * Set `eVersionMadeBy` to 0 (default) in `toEntry`, since we are
+    setting external attributes to 0.  See jgm/pandoc#2822.
+    Only to `eVersionMadeBy` to UNIX if we actually read file
+    attributes on a UNIX system.
+
 zip-archive 0.3
 
   * Support preservation of file modes on Posix (Dan Aloni, #26).
