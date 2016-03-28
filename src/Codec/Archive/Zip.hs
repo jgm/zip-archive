@@ -241,7 +241,7 @@ toEntry path modtime contents =
             , eUncompressedSize        = fromIntegral uncompressedSize
             , eExtraField              = B.empty
             , eFileComment             = B.empty
-            , eVersionMadeBy           = versionMadeBy
+            , eVersionMadeBy           = 0  -- FAT
             , eInternalFileAttributes  = 0  -- potentially non-text
             , eExternalFileAttributes  = 0  -- appropriate if from stdin
             , eCompressedData          = finalData
@@ -276,7 +276,8 @@ readEntry opts path = do
 #else
         do fm <- fmap fileMode $ getFileStatus path'
            let modes = fromIntegral $ shiftL (toInteger fm) 16
-           return $ entry { eExternalFileAttributes = modes }
+           return $ entry { eExternalFileAttributes = modes,
+                            eVersionMadeBy = versionMadeBy }
 #endif
 
   when (OptVerbose `elem` opts) $ do
