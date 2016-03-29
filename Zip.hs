@@ -17,6 +17,8 @@ import System.Directory
 import System.Console.GetOpt
 import Control.Monad ( when )
 import Control.Applicative ( (<$>) )
+import Data.Version ( showVersion )
+import Paths_zip_archive ( version )
 
 data Flag 
   = Quiet 
@@ -45,7 +47,9 @@ main = do
   progname <- getProgName
   let header = "Usage: " ++ progname ++ " [OPTION...] archive files..."
   (opts, args) <- case getOpt Permute options argv of
-      (o, _, _)      | Version `elem` o -> putStrLn "version 0.1.1.4" >> exitWith ExitSuccess
+      (o, _, _)      | Version `elem` o -> do
+        putStrLn ("version " ++ showVersion version)
+        exitWith ExitSuccess
       (o, _, _)      | Help `elem` o    -> error $ usageInfo header options
       (o, (a:as), [])                   -> return (o, a:as)
       (_, _, errs)                      -> error $ concat errs ++ "\n" ++ usageInfo header options
