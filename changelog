@@ -1,3 +1,8 @@
+zip-archive 0.3.0.2
+
+  * Fix test suite so it runs on Windows.
+  * Zip executable: get version from cabal `Paths_zip_archive` (#27).
+
 zip-archive 0.3.0.1
 
   * Set `eVersionMadeBy` to 0 (default) in `toEntry`, since we are
