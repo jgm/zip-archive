@@ -107,6 +107,7 @@ testExtractFiles = TestCase $ do
   assertEqual "contents of test-temp/dir1/hi" hiMsg hi
   assertEqual "contents of test-temp/dir1/dir2/hello" helloMsg hello
 
+#ifndef _WINDOWS
 testExtractFilesWithPosixAttrs :: Test
 testExtractFilesWithPosixAttrs = TestCase $ do
   createDirectory "test-temp/dir3"
@@ -121,3 +122,4 @@ testExtractFilesWithPosixAttrs = TestCase $ do
   fm <- fmap fileMode $ getFileStatus "test-temp/dir3/hi"
   assertEqual "file modes" perms (intersectFileModes perms fm)
   assertEqual "contents of test-temp/dir3/hi" hiMsg hi
+#endif
