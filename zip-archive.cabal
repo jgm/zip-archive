@@ -61,7 +61,7 @@ Test-Suite test-zip-archive
   Hs-Source-Dirs: tests
   Build-Depends:  base >= 4.2 && < 5,
                   directory, bytestring >= 0.9.0, process, time, old-time,
-                  HUnit, zip-archive
+                  HUnit, zip-archive, temporary
   Default-Language:  Haskell98
   Ghc-Options:    -Wall
   Build-Tools:    zip

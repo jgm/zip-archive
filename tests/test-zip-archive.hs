@@ -11,6 +11,7 @@ import System.Process
 import qualified Data.ByteString.Lazy as B
 import Control.Applicative
 import System.Exit
+import System.IO.Temp (withTempDirectory)
 
 #ifndef _WINDOWS
 import System.Posix.Files
@@ -25,9 +26,9 @@ instance Eq Archive where
                                            y { eLastModified = eLastModified y `div` 2  }) (zEntries a1) (zEntries a2))
 
 main :: IO Counts
-main = do
-  createDirectory "test-temp"
-  res   <- runTestTT $ TestList [ testReadWriteArchive
+main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
+  res   <- runTestTT $ TestList $ map (\f -> f tmpDir)
+                                [ testReadWriteArchive
                                 , testReadExternalZip
                                 , testFromToArchive
                                 , testReadWriteEntry
@@ -38,23 +39,24 @@ main = do
                                 , testExtractFilesWithPosixAttrs
 #endif
                                 ]
-  removeDirectoryRecursive "test-temp"
   exitWith $ case (failures res + errors res) of
                      0 -> ExitSuccess
                      n -> ExitFailure n
 
-testReadWriteArchive :: Test
-testReadWriteArchive = TestCase $ do
+testReadWriteArchive :: FilePath -> Test
+testReadWriteArchive tmpDir = TestCase $ do
   archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
-  B.writeFile "test-temp/test1.zip" $ fromArchive archive
-  archive' <- toArchive <$> B.readFile "test-temp/test1.zip"
+  B.writeFile (tmpDir ++ "/test1.zip") $ fromArchive archive
+  archive' <- toArchive <$> B.readFile (tmpDir ++ "/test1.zip")
   assertEqual "for writing and reading test1.zip" archive archive'
   assertEqual "for writing and reading test1.zip" archive archive'
 
-testReadExternalZip :: Test
-testReadExternalZip = TestCase $ do
-  _ <- runCommand "zip -q test-temp/test4.zip zip-archive.cabal src/Codec/Archive/Zip.hs" >>= waitForProcess
-  archive <- toArchive <$> B.readFile "test-temp/test4.zip"
+testReadExternalZip :: FilePath -> Test
+testReadExternalZip tmpDir = TestCase $ do
+  _ <- runCommand ("zip -q " ++ tmpDir ++
+           "/test4.zip zip-archive.cabal src/Codec/Archive/Zip.hs") >>=
+           waitForProcess
+  archive <- toArchive <$> B.readFile (tmpDir ++ "/test4.zip")
   let files = filesInArchive archive
   assertEqual "for results of filesInArchive" ["zip-archive.cabal", "src/Codec/Archive/Zip.hs"] files
   cabalContents <- B.readFile "zip-archive.cabal"
@@ -62,64 +64,64 @@ testReadExternalZip = TestCase $ do
        Nothing  -> assertFailure "zip-archive.cabal not found in archive"
        Just f   -> assertEqual "for contents of zip-archive.cabal in archive" cabalContents (fromEntry f)
 
-testFromToArchive :: Test
-testFromToArchive = TestCase $ do
+testFromToArchive :: FilePath -> Test
+testFromToArchive _tmpDir = TestCase $ do
   archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive (toArchive $ fromArchive archive)
 
-testReadWriteEntry :: Test
-testReadWriteEntry = TestCase $ do
+testReadWriteEntry :: FilePath -> Test
+testReadWriteEntry tmpDir = TestCase $ do
   entry <- readEntry [] "zip-archive.cabal"
-  setCurrentDirectory "test-temp"
+  setCurrentDirectory tmpDir
   writeEntry [] entry
   setCurrentDirectory ".."
-  entry' <- readEntry [] "test-temp/zip-archive.cabal"
+  entry' <- readEntry [] (tmpDir ++ "/zip-archive.cabal")
   let entry'' = entry' { eRelativePath = eRelativePath entry, eLastModified = eLastModified entry }
   assertEqual "for readEntry -> writeEntry -> readEntry" entry entry''
 
-testAddFilesOptions :: Test
-testAddFilesOptions = TestCase $ do
+testAddFilesOptions :: FilePath -> Test
+testAddFilesOptions _tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [OptVerbose] emptyArchive ["LICENSE", "src"]
   archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "src"]
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
 
-testDeleteEntries :: Test
-testDeleteEntries = TestCase $ do
+testDeleteEntries :: FilePath -> Test
+testDeleteEntries _tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [] emptyArchive ["LICENSE", "src"]
   let archive2 = deleteEntryFromArchive "LICENSE" archive1
   let archive3 = deleteEntryFromArchive "src" archive2
   assertEqual "for deleteFilesFromArchive" emptyArchive archive3
 
-testExtractFiles :: Test
-testExtractFiles = TestCase $ do
-  createDirectory "test-temp/dir1"
-  createDirectory "test-temp/dir1/dir2"
+testExtractFiles :: FilePath -> Test
+testExtractFiles tmpDir = TestCase $ do
+  createDirectory (tmpDir ++ "/dir1")
+  createDirectory (tmpDir ++ "/dir1/dir2")
   let hiMsg = "hello there"
   let helloMsg = "Hello there. This file is very long.  Longer than 31 characters."
-  writeFile "test-temp/dir1/hi" hiMsg
-  writeFile "test-temp/dir1/dir2/hello" helloMsg
-  archive <- addFilesToArchive [OptRecursive] emptyArchive ["test-temp/dir1"]
-  removeDirectoryRecursive "test-temp/dir1"
+  writeFile (tmpDir ++ "/dir1/hi") hiMsg
+  writeFile (tmpDir ++ "/dir1/dir2/hello") helloMsg
+  archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir ++ "/dir1")]
+  removeDirectoryRecursive (tmpDir ++ "/dir1")
   extractFilesFromArchive [OptVerbose] archive
-  hi <- readFile "test-temp/dir1/hi"
-  hello <- readFile "test-temp/dir1/dir2/hello"
-  assertEqual "contents of test-temp/dir1/hi" hiMsg hi
-  assertEqual "contents of test-temp/dir1/dir2/hello" helloMsg hello
+  hi <- readFile (tmpDir ++ "/dir1/hi")
+  hello <- readFile (tmpDir ++ "/dir1/dir2/hello")
+  assertEqual ("contents of " ++ tmpDir ++ "/dir1/hi") hiMsg hi
+  assertEqual ("contents of " ++ tmpDir ++ "/dir1/dir2/hello") helloMsg hello
 
 #ifndef _WINDOWS
-testExtractFilesWithPosixAttrs :: Test
-testExtractFilesWithPosixAttrs = TestCase $ do
-  createDirectory "test-temp/dir3"
+testExtractFilesWithPosixAttrs :: FilePath -> Test
+testExtractFilesWithPosixAttrs tmpDir = TestCase $ do
+  createDirectory (tmpDir ++ "/dir3")
   let hiMsg = "hello there"
-  writeFile "test-temp/dir3/hi" hiMsg
+  writeFile (tmpDir ++ "/dir3/hi") hiMsg
   let perms = unionFileModes ownerReadMode $ unionFileModes ownerWriteMode ownerExecuteMode
-  setFileMode "test-temp/dir3/hi" perms
-  archive <- addFilesToArchive [OptRecursive] emptyArchive ["test-temp/dir3"]
-  removeDirectoryRecursive "test-temp/dir3"
+  setFileMode (tmpDir ++ "/dir3/hi") perms
+  archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir ++ "/dir3")]
+  removeDirectoryRecursive (tmpDir ++ "/dir3")
   extractFilesFromArchive [OptVerbose] archive
-  hi <- readFile "test-temp/dir3/hi"
-  fm <- fmap fileMode $ getFileStatus "test-temp/dir3/hi"
+  hi <- readFile (tmpDir ++ "/dir3/hi")
+  fm <- fmap fileMode $ getFileStatus (tmpDir ++ "/dir3/hi")
   assertEqual "file modes" perms (intersectFileModes perms fm)
-  assertEqual "contents of test-temp/dir3/hi" hiMsg hi
+  assertEqual ("contents of " ++ tmpDir ++ "/dir3/hi") hiMsg hi
 #endif
