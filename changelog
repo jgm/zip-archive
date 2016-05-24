@@ -1,3 +1,9 @@
+zip-archive 0.3.0.3
+
+  * Test suite: use withTempDir to create temporary directory.
+    This should help fix problems some have encountered with the
+    test suite leaving a temporary directory behind.
+
 zip-archive 0.3.0.2
 
   * Fix test suite so it runs on Windows.
