@@ -85,6 +85,7 @@ import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getFileStatus )
 #endif
 
 -- from bytestring
+import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as B
 
 -- text
@@ -605,20 +606,64 @@ getLocalFile = do
               skip 4 -- crc32
               cs <- getWord32le  -- compressed size
               skip 4 -- uncompressed size
-              if fromIntegral cs == length raw
-                 then return $ B.pack raw
-                 else fail "Content size mismatch in data descriptor record" 
+              if fromIntegral cs == B.length raw
+                 then return $ raw
+                 else fail "Content size mismatch in data descriptor record"
   return (fromIntegral offset, compressedData)
 
-getWordsTilSig :: Word32 -> Get [Word8]
-getWordsTilSig sig = go []
+getWordsTilSig :: Word32 -> Get B.ByteString
+#if MIN_VERSION_binary(0, 6, 0)
+getWordsTilSig sig = (B.fromChunks . reverse) `fmap` go Nothing []
+  where
+    sig' = S.pack [fromIntegral $ sig .&. 0xFF,
+                   fromIntegral $ sig `shiftR`  8 .&. 0xFF,
+                   fromIntegral $ sig `shiftR` 16 .&. 0xFF,
+                   fromIntegral $ sig `shiftR` 24 .&. 0xFF]
+    chunkSize = 16384
+    --chunkSize = 4 -- for testing prefix match
+    checkChunk chunk = do -- find in content
+          let (prefix, start) = S.breakSubstring sig' chunk
+          if S.null start
+            then return $ Right chunk
+            else return $ Left $ S.length prefix
+    go :: Maybe (Word8, Word8, Word8) -> [S.ByteString] -> Get [S.ByteString]
+    go prefixes acc = do
+      -- note: lookAheadE will rewind if the result is Left
+      eitherChunkOrIndex <- lookAheadE $ do
+          chunk <- getByteString chunkSize <|> B.toStrict `fmap` getRemainingLazyByteString
+          case prefixes of
+            Just (byte3,byte2,byte1) ->
+              let len = S.length chunk in
+                if len >= 1 &&
+                   S.pack [byte3,byte2,byte1,S.index chunk 0] == sig'
+                then return $ Left $ -3
+                else if len >= 2 &&
+                   S.pack [byte2,byte1,S.index chunk 0,S.index chunk 1] == sig'
+                then return $ Left $ -2
+                else if len >= 3 &&
+                   S.pack [byte1,S.index chunk 0,S.index chunk 1,S.index chunk 2] == sig'
+                then return $ Left $ -1
+                else checkChunk chunk
+            Nothing -> checkChunk chunk
+      case eitherChunkOrIndex of
+        Left index -> if index < 0
+            then do -- prefix match
+                skip (4 + index) -- skip over partial match in next chunk
+                return $ (S.take (S.length (head acc) + index) (head acc)) : (tail acc)
+            else do -- match inside this chunk
+                lastchunk <- getByteString index -- must read again
+                skip 4
+                return (lastchunk:acc)
+        Right chunk -> if len == chunkSize
+            then go prefixes' (chunk:acc)
+            else fail $ "getWordsTilSig: signature not found before EOF"
+          where
+            len = S.length chunk
+            prefixes' = Just $ (S.index chunk (len - 3), S.index chunk (len - 2), S.index chunk (len - 1))
+#else
+getWordsTilSig sig = B.pack `fmap` go []
   where
     go acc = do
-#if MIN_VERSION_binary(0, 6, 0)
-      (getWord32le >>= ensure (== sig) >> return (reverse acc)) <|>
-        do w <- getWord8
-           go (w:acc)
-#else
       sig' <- lookAhead getWord32le
       if sig == sig'
           then skip 4 >> return (reverse acc)
