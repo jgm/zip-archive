@@ -258,7 +258,7 @@ readEntry opts path = do
                                     _ | isDir -> "/"
                                       | otherwise -> "") in
               (case [(l,a) | OptLocation l a <- opts] of
-                    ((l,a):_) -> if a then l </> p else l
+                    ((l,a):_) -> if a then l </> p else l </> takeFileName p
                     _         -> p)
   contents <- if isDir
                  then return B.empty
@@ -275,7 +275,7 @@ readEntry opts path = do
 #ifdef _WINDOWS
         return $ entry
 #else
-        do fm <- fmap fileMode $ getFileStatus path'
+        do fm <- fmap fileMode $ getFileStatus path
            let modes = fromIntegral $ shiftL (toInteger fm) 16
            return $ entry { eExternalFileAttributes = modes,
                             eVersionMadeBy = versionMadeBy }
@@ -505,7 +505,7 @@ getArchive = do
   locals <- manySig 0x04034b50 getLocalFile
   files <- manySig 0x02014b50 (getFileHeader (M.fromList locals))
   digSig <- lookAheadM getDigitalSignature
-#endif 
+#endif
   endSig <- getWord32le
   unless (endSig == 0x06054b50)
     $ fail "Did not find end of central directory signature"
