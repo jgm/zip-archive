@@ -1,3 +1,7 @@
+zip-archive 0.3.0.5
+
+  * Fix `OptLocation` option handling (EugeneN).
+
 zip-archive 0.3.0.4
 
   * Fix `toArchive` so it doesn't use too much memory when a data
