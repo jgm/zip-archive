@@ -30,7 +30,7 @@ Library
     Build-depends:   base >= 3 && < 5, pretty, containers
   else
     Build-depends:   base < 3
-  Build-depends:     binary >= 0.5, zlib, filepath, bytestring >= 0.9.0,
+  Build-depends:     binary >= 0.5, zlib, filepath, bytestring >= 0.10.0,
                      array, mtl, text >= 0.11, old-time, digest >= 0.0.0.1,
                      directory, time
   Exposed-modules:   Codec.Archive.Zip
