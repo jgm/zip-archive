@@ -1,3 +1,9 @@
+zip-archive 0.3.0.7
+
+  * Fix check for unix file attributes (#34).
+    Previously attributes would not always be preserved
+    for files in zip archives.
+
 zip-archive 0.3.0.6
 
   * Bump bytestring lower bound so toStrict is guaranteed (Benjamin Landers).
