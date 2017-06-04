@@ -1,3 +1,9 @@
+zip-archive 0.3.1
+
+  * Don't use a custom build (#28).
+  * Renamed executable Zip -> zip-archive, added --debug option.
+    The --debug option prints the intermediate Haskell data structure.
+
 zip-archive 0.3.0.7
 
   * Fix check for unix file attributes (#34).
