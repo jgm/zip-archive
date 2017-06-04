@@ -318,7 +318,7 @@ writeEntry opts entry = do
           else E.throwIO $ CRC32Mismatch path
 #ifndef _WINDOWS
        let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
-       when (eVersionMadeBy entry == 0x0300 &&
+       when (eVersionMadeBy entry .&. 0xFF00 == 0x0300 &&
              modes /= 0) $ setFileMode path modes
 #endif
 
