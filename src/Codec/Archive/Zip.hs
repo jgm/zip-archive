@@ -61,7 +61,7 @@ import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..
 #if MIN_VERSION_directory(1,2,0)
 import Data.Time.Clock.POSIX ( utcTimeToPOSIXSeconds )
 #endif
-import Data.Bits ( shiftL, shiftR, (.&.), testBit )
+import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
@@ -305,11 +305,9 @@ writeEntry opts entry = do
     createDirectoryIfMissing True dir
     when (OptVerbose `elem` opts) $
       hPutStrLn stderr $ "  creating: " ++ dir
-  let modes = if (eVersionMadeBy entry .&. 0xFF00 == 0x0300)
-                 then fromIntegral $ shiftR (eExternalFileAttributes entry) 16
-                 else 0
-  -- uncompress data unless path is a directory
-  unless (not (null path) && (last path == '/' || testBit modes 7)) $ do
+  if length path > 0 && last path == '/' -- path is a directory
+     then return ()
+     else do
        when (OptVerbose `elem` opts) $ do
          hPutStrLn stderr $ case eCompressionMethod entry of
                                  Deflate       -> " inflating: " ++ path
@@ -319,7 +317,9 @@ writeEntry opts entry = do
           then B.writeFile path uncompressedData
           else E.throwIO $ CRC32Mismatch path
 #ifndef _WINDOWS
-       when (modes /= 0) $ setFileMode path modes
+       let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
+       when (eVersionMadeBy entry .&. 0xFF00 == 0x0300 &&
+             modes /= 0) $ setFileMode path modes
 #endif
 
   -- Note that last modified times are supported only for POSIX, not for
