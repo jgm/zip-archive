@@ -42,12 +42,12 @@ Library
   else
     Build-depends:   unix
 
-Executable Zip
+Executable zip-archive
   if flag(executable)
     Buildable:       True
   else
     Buildable:       False
-  Main-is:           Zip.hs
+  Main-is:           Main.hs
   Hs-Source-Dirs:    .
   Build-Depends:     base >= 4.2 && < 5, directory >= 1.1, bytestring >= 0.9.0,
                      zip-archive

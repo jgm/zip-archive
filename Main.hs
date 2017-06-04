@@ -19,14 +19,16 @@ import Control.Monad ( when )
 import Control.Applicative ( (<$>) )
 import Data.Version ( showVersion )
 import Paths_zip_archive ( version )
+import Debug.Trace ( traceShowId )
 
-data Flag 
-  = Quiet 
+data Flag
+  = Quiet
   | Version
   | Decompress
   | Recursive
   | Remove
   | List
+  | Debug
   | Help
   deriving (Eq, Show, Read)
 
@@ -38,6 +40,7 @@ options =
    , Option ['l']   ["list"]       (NoArg List)          "list"
    , Option ['v']   ["version"]    (NoArg Version)       "version"
    , Option ['q']   ["quiet"]      (NoArg Quiet)         "quiet"
+   , Option []      ["debug"]      (NoArg Debug)         "debug output"
    , Option ['h']   ["help"]       (NoArg Help)          "help"
    ]
 
@@ -54,31 +57,34 @@ main = do
       (o, (a:as), [])                   -> return (o, a:as)
       (_, _, errs)                      -> error $ concat errs ++ "\n" ++ usageInfo header options
   let verbosity = if Quiet `elem` opts then [] else [OptVerbose]
-  let cmd = take 1 $ filter (`notElem` [Quiet, Help, Version]) opts
-  let cmd' = if null cmd
-                then Recursive
-                else head cmd
+  let debug = Debug `elem` opts
+  let cmd = case filter (`notElem` [Quiet, Help, Version, Debug]) opts of
+                  []    -> Recursive
+                  (x:_) -> x
   let (archivePath : files) = args
   exists <- doesFileExist archivePath
   archive <- if exists
                 then toArchive <$> B.readFile archivePath
                 else return emptyArchive
-  case cmd' of
-       Decompress  -> extractFilesFromArchive verbosity archive  
+  let showArchiveIfDebug x = if debug
+                                then traceShowId x
+                                else x
+  case cmd of
+       Decompress  -> extractFilesFromArchive verbosity $ showArchiveIfDebug archive
        Remove      -> do tempDir <- getTemporaryDirectory
-                         (tempArchivePath, tempArchive) <- openTempFile tempDir "zip" 
-                         B.hPut tempArchive $ fromArchive $ 
+                         (tempArchivePath, tempArchive) <- openTempFile tempDir "zip"
+                         B.hPut tempArchive $ fromArchive $ showArchiveIfDebug $
                                               foldr deleteEntryFromArchive archive files
                          hClose tempArchive
                          copyFile tempArchivePath archivePath
                          removeFile tempArchivePath
-       List        -> mapM_ putStrLn $ filesInArchive archive
+       List        -> mapM_ putStrLn $ filesInArchive $ showArchiveIfDebug archive
        Recursive   -> do when (null files) $ error "No files specified."
                          tempDir <- getTemporaryDirectory
-                         (tempArchivePath, tempArchive) <- openTempFile tempDir "zip" 
-                         addFilesToArchive (verbosity ++ [OptRecursive]) archive files >>= 
-                            B.hPut tempArchive . fromArchive
+                         (tempArchivePath, tempArchive) <- openTempFile tempDir "zip"
+                         addFilesToArchive (verbosity ++ [OptRecursive]) archive files >>=
+                            B.hPut tempArchive . fromArchive . showArchiveIfDebug
                          hClose tempArchive
                          copyFile tempArchivePath archivePath
                          removeFile tempArchivePath
-       _           -> error "Unknown command"
+       _           -> error $ "Unknown command " ++ show cmd
