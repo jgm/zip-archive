@@ -17,7 +17,7 @@ Extra-Source-Files:  changelog,
                      tests/test4.zip,
                      tests/test4/a.txt,
                      tests/test4/b.bin,
-                     tests/test4/c/with spaces.txt
+                     "tests/test4/c/with spaces.txt"
 
 Source-repository    head
   type:              git
