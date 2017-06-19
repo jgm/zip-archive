@@ -7,7 +7,8 @@ import Codec.Archive.Zip
 import System.Directory
 import Test.HUnit.Base
 import Test.HUnit.Text
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Lazy as BL
 import Control.Applicative
 import System.Exit
 import System.IO.Temp (withTempDirectory)
@@ -45,19 +46,19 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
 testReadWriteArchive :: FilePath -> Test
 testReadWriteArchive tmpDir = TestCase $ do
   archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
-  B.writeFile (tmpDir ++ "/test1.zip") $ fromArchive archive
-  archive' <- toArchive <$> B.readFile (tmpDir ++ "/test1.zip")
+  BL.writeFile (tmpDir ++ "/test1.zip") $ fromArchive archive
+  archive' <- toArchive <$> BL.readFile (tmpDir ++ "/test1.zip")
   assertEqual "for writing and reading test1.zip" archive archive'
   assertEqual "for writing and reading test1.zip" archive archive'
 
 testReadExternalZip :: FilePath -> Test
 testReadExternalZip _tmpDir = TestCase $ do
-  archive <- toArchive <$> B.readFile "tests/test4.zip"
+  archive <- toArchive <$> BL.readFile "tests/test4.zip"
   let files = filesInArchive archive
   assertEqual "for results of filesInArchive"
     ["test4/","test4/a.txt","test4/b.bin","test4/c/",
      "test4/c/with spaces.txt"] files
-  bContents <- B.readFile "tests/test4/b.bin"
+  bContents <- BL.readFile "tests/test4/b.bin"
   case findEntryByPath "test4/b.bin" archive of
        Nothing  -> assertFailure "test4/b.bin not found in archive"
        Just f   -> assertEqual "for contents of test4/b.bin in archive"
@@ -65,7 +66,7 @@ testReadExternalZip _tmpDir = TestCase $ do
   case findEntryByPath "test4/" archive of
        Nothing  -> assertFailure "test4/ not found in archive"
        Just f   -> assertEqual "for contents of test4/ in archive"
-                      B.empty (fromEntry f)
+                      BL.empty (fromEntry f)
 
 testFromToArchive :: FilePath -> Test
 testFromToArchive _tmpDir = TestCase $ do
@@ -100,15 +101,15 @@ testExtractFiles :: FilePath -> Test
 testExtractFiles tmpDir = TestCase $ do
   createDirectory (tmpDir ++ "/dir1")
   createDirectory (tmpDir ++ "/dir1/dir2")
-  let hiMsg = "hello there"
-  let helloMsg = "Hello there. This file is very long.  Longer than 31 characters."
-  writeFile (tmpDir ++ "/dir1/hi") hiMsg
-  writeFile (tmpDir ++ "/dir1/dir2/hello") helloMsg
+  let hiMsg = BS.pack "hello there"
+  let helloMsg = BS.pack "Hello there. This file is very long.  Longer than 31 characters."
+  BS.writeFile (tmpDir ++ "/dir1/hi") hiMsg
+  BS.writeFile (tmpDir ++ "/dir1/dir2/hello") helloMsg
   archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir ++ "/dir1")]
   removeDirectoryRecursive (tmpDir ++ "/dir1")
   extractFilesFromArchive [OptVerbose] archive
-  hi <- readFile (tmpDir ++ "/dir1/hi")
-  hello <- readFile (tmpDir ++ "/dir1/dir2/hello")
+  hi <- BS.readFile (tmpDir ++ "/dir1/hi")
+  hello <- BS.readFile (tmpDir ++ "/dir1/dir2/hello")
   assertEqual ("contents of " ++ tmpDir ++ "/dir1/hi") hiMsg hi
   assertEqual ("contents of " ++ tmpDir ++ "/dir1/dir2/hello") helloMsg hello
 
