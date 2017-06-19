@@ -12,7 +12,12 @@ License-file:        LICENSE
 Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
-Extra-Source-Files:  changelog, README.markdown
+Extra-Source-Files:  changelog,
+                     README.markdown,
+                     tests/test4.zip,
+                     tests/test4/a.txt,
+                     tests/test4/b.bin,
+                     tests/test4/c/with spaces.txt
 
 Source-repository    head
   type:              git

@@ -7,7 +7,6 @@ import Codec.Archive.Zip
 import System.Directory
 import Test.HUnit.Base
 import Test.HUnit.Text
-import System.Process
 import qualified Data.ByteString.Lazy as B
 import Control.Applicative
 import System.Exit
@@ -52,17 +51,21 @@ testReadWriteArchive tmpDir = TestCase $ do
   assertEqual "for writing and reading test1.zip" archive archive'
 
 testReadExternalZip :: FilePath -> Test
-testReadExternalZip tmpDir = TestCase $ do
-  _ <- runCommand ("zip -q " ++ tmpDir ++
-           "/test4.zip zip-archive.cabal src/Codec/Archive/Zip.hs") >>=
-           waitForProcess
-  archive <- toArchive <$> B.readFile (tmpDir ++ "/test4.zip")
+testReadExternalZip _tmpDir = TestCase $ do
+  archive <- toArchive <$> B.readFile "tests/test4.zip"
   let files = filesInArchive archive
-  assertEqual "for results of filesInArchive" ["zip-archive.cabal", "src/Codec/Archive/Zip.hs"] files
-  cabalContents <- B.readFile "zip-archive.cabal"
-  case findEntryByPath "zip-archive.cabal" archive of 
-       Nothing  -> assertFailure "zip-archive.cabal not found in archive"
-       Just f   -> assertEqual "for contents of zip-archive.cabal in archive" cabalContents (fromEntry f)
+  assertEqual "for results of filesInArchive"
+    ["test4/","test4/a.txt","test4/b.bin","test4/c/",
+     "test4/c/with spaces.txt"] files
+  bContents <- B.readFile "tests/test4/b.bin"
+  case findEntryByPath "test4/b.bin" archive of
+       Nothing  -> assertFailure "test4/b.bin not found in archive"
+       Just f   -> assertEqual "for contents of test4/b.bin in archive"
+                      bContents (fromEntry f)
+  case findEntryByPath "test4/" archive of
+       Nothing  -> assertFailure "test4/ not found in archive"
+       Just f   -> assertEqual "for contents of test4/ in archive"
+                      mempty (fromEntry f)
 
 testFromToArchive :: FilePath -> Test
 testFromToArchive _tmpDir = TestCase $ do
