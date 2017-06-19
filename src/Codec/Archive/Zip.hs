@@ -262,7 +262,7 @@ readEntry opts path = do
                     _         -> p)
   contents <- if isDir
                  then return B.empty
-                 else B.readFile path
+                 else B.fromStrict <$> S.readFile path
 #if MIN_VERSION_directory(1,2,0)
   modEpochTime <- fmap (floor . utcTimeToPOSIXSeconds)
                    $ getModificationTime path
