@@ -65,7 +65,7 @@ testReadExternalZip _tmpDir = TestCase $ do
   case findEntryByPath "test4/" archive of
        Nothing  -> assertFailure "test4/ not found in archive"
        Just f   -> assertEqual "for contents of test4/ in archive"
-                      mempty (fromEntry f)
+                      B.empty (fromEntry f)
 
 testFromToArchive :: FilePath -> Test
 testFromToArchive _tmpDir = TestCase $ do
