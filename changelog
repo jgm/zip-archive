@@ -1,3 +1,12 @@
+zip-archive 0.3.1.1
+
+  * readEntry:  Read file as a strict ByteString.  This avoids
+    problems on Windows, where the file handle wasn't being closed.
+  * Added appveyor.yml to do continuous testing on Windows.
+  * Test suite: remove need for external zip program (#35).
+    Instead of creating an archive with zip, we now store
+    a small externally created zip archive to use for testing.
+
 zip-archive 0.3.1
 
   * Don't use a custom build (#28).
