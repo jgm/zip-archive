@@ -70,7 +70,7 @@ import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
-import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing, pathIsSymbolicLink)
+import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing, )
 import Control.Monad ( when, unless, zipWithM )
 import qualified Control.Exception as E
 import System.Directory ( getModificationTime )
@@ -81,7 +81,7 @@ import qualified Data.Map as M
 import Control.Applicative
 #endif
 #ifndef _WINDOWS
-import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getFileStatus, symbolicLinkMode, readSymbolicLink)
+import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink)
 #endif
 
 -- from bytestring
@@ -254,8 +254,13 @@ toEntry path modtime contents =
 readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
-  isSymLink <- pathIsSymbolicLink path  >>= \b -> return $ b && (OptPreserveSymbolicLinks `elem` opts)
+#ifdef _WINDOWS
+  let isSymLink = false
+#else
+  fs <- getSymbolicLinkStatus path
+  let isSymLink = isSymbolicLink fs
 
+#endif
   -- make sure directories end in / and deal with the OptLocation option
   let path' = let p = path ++ (case reverse path of
                                     ('/':_) -> ""
@@ -280,12 +285,12 @@ readEntry opts path = do
 #ifdef _WINDOWS
         return $ entry
 #else
-        do fm <- fmap fileMode $ getFileStatus path
-           let finalFileMode = if isSymLink
-                                then symbolicLinkMode
-                                else fm
+        do
+           let fm = if isSymLink
+                      then symbolicLinkMode
+                      else fileMode fs
 
-           let modes = fromIntegral $ shiftL (toInteger finalFileMode) 16
+           let modes = fromIntegral $ shiftL (toInteger fm) 16
            if isSymLink
             then do
               linkTarget <- readSymbolicLink path
@@ -352,7 +357,11 @@ writeEntry opts entry = do
 addFilesToArchive :: [ZipOption] -> Archive -> [FilePath] -> IO Archive
 addFilesToArchive opts archive files = do
   filesAndChildren <- if OptRecursive `elem` opts
+#ifdef _WINDOWS
+                         then mapM getDirectoryContentsRecursive files >>= return . nub . concat
+#else
                          then mapM (getDirectoryContentsRecursive' opts) files >>= return . nub . concat
+#endif
                          else return files
   entries <- mapM (readEntry opts) filesAndChildren
   return $ foldr addEntryToArchive archive entries
@@ -446,6 +455,7 @@ msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTim
       (TOD epochsecs _) = addToClockTime timeSinceEpoch (TOD 0 0)
   in  epochsecs
 
+#ifndef _WINDOWS
 getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
 getDirectoryContentsRecursive' opts path = do
   if OptPreserveSymbolicLinks `elem` opts
@@ -453,12 +463,13 @@ getDirectoryContentsRecursive' opts path = do
        isDir <- doesDirectoryExist path
        if isDir
           then do
-            isSymLink <- pathIsSymbolicLink path
+            isSymLink <- fmap isSymbolicLink $ getSymbolicLinkStatus path
             if isSymLink
                then return [path]
                else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
           else return [path]
      else getDirectoryContentsRecursive path
+#endif
 
 getDirectoryContentsRecursive :: FilePath -> IO [FilePath]
 getDirectoryContentsRecursive path = do
