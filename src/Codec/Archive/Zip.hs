@@ -255,7 +255,7 @@ readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
 #ifdef _WINDOWS
-  let isSymLink = false
+  let isSymLink = False
 #else
   fs <- getSymbolicLinkStatus path
   let isSymLink = isSymbolicLink fs
