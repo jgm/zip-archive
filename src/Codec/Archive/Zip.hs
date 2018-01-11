@@ -254,13 +254,13 @@ toEntry path modtime contents =
 readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
-  isSymLinkDir <- pathIsSymbolicLink path  >>= \b -> return $ b && (OptPreserveSymbolicLinks `elem` opts) && isDir
+  isSymLink <- pathIsSymbolicLink path  >>= \b -> return $ b && (OptPreserveSymbolicLinks `elem` opts)
 
   -- make sure directories end in / and deal with the OptLocation option
   let path' = let p = path ++ (case reverse path of
                                     ('/':_) -> ""
-                                    _ | isDir && not isSymLinkDir -> "/"
-                                    _ | isDir && isSymLinkDir -> ""
+                                    _ | isDir && not isSymLink -> "/"
+                                    _ | isDir && isSymLink -> ""
                                       | otherwise -> "") in
               (case [(l,a) | OptLocation l a <- opts] of
                     ((l,a):_) -> if a then l </> p else l </> takeFileName p
@@ -281,12 +281,12 @@ readEntry opts path = do
         return $ entry
 #else
         do fm <- fmap fileMode $ getFileStatus path
-           let finalFileMode = if isSymLinkDir
+           let finalFileMode = if isSymLink
                                 then symbolicLinkMode
                                 else fm
 
            let modes = fromIntegral $ shiftL (toInteger finalFileMode) 16
-           if isSymLinkDir
+           if isSymLink
             then do
               linkTarget <- readSymbolicLink path
               let targetBS = C.pack linkTarget
@@ -448,7 +448,6 @@ msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTim
 
 getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
 getDirectoryContentsRecursive' opts path = do
-
   if OptPreserveSymbolicLinks `elem` opts
      then do
        isDir <- doesDirectoryExist path
@@ -457,13 +456,7 @@ getDirectoryContentsRecursive' opts path = do
             isSymLink <- pathIsSymbolicLink path
             if isSymLink
                then return [path]
-               else do
-                 contents <- getDirectoryContents path
-                 let contents' = map (path </>) $ filter (`notElem` ["..","."]) contents
-                 children <- mapM (getDirectoryContentsRecursive' opts) contents'
-                 if path == "."
-                   then return (concat children)
-                   else return (path : concat children)
+               else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
           else return [path]
      else getDirectoryContentsRecursive path
 
@@ -471,14 +464,18 @@ getDirectoryContentsRecursive :: FilePath -> IO [FilePath]
 getDirectoryContentsRecursive path = do
   isDir <- doesDirectoryExist path
   if isDir
-     then do
+     then getDirectoryContentsRecursivelyBy getDirectoryContentsRecursive path
+     else return [path]
+
+getDirectoryContentsRecursivelyBy :: (FilePath -> IO [FilePath]) -> FilePath -> IO [FilePath]
+getDirectoryContentsRecursivelyBy exploreMethod path = do
        contents <- getDirectoryContents path
        let contents' = map (path </>) $ filter (`notElem` ["..","."]) contents
-       children <- mapM getDirectoryContentsRecursive contents'
+       children <- mapM exploreMethod contents'
        if path == "."
           then return (concat children)
           else return (path : concat children)
-     else return [path]
+
 
 setFileTimeStamp :: FilePath -> Integer -> IO ()
 setFileTimeStamp file epochtime = do
