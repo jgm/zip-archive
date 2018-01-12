@@ -300,7 +300,8 @@ readEntry opts path = do
                                eVersionMadeBy = versionMadeBy,
                                eCompressedData = targetBS,
                                eCompressedSize = targetSize,
-                               eUncompressedSize = targetSize }
+                               eUncompressedSize = targetSize,
+                               eCompressionMethod = NoCompression }
             else return $ entry { eExternalFileAttributes = modes,
                                   eVersionMadeBy = versionMadeBy }
 #endif
