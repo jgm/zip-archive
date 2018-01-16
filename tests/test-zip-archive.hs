@@ -89,6 +89,13 @@ testAddFilesOptions _tmpDir = TestCase $ do
   archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "src"]
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
+#ifndef _WINDOWS
+  archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive ["tests/test_dir_with_symlinks"]
+  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive ["tests/test_dir_with_symlinks"]
+  assertBool "for recursive and recursive by preserving symlinks addFilesToArchive"
+     (length (filesInArchive archive4) < length (filesInArchive archive3))
+#endif
+
 
 testDeleteEntries :: FilePath -> Test
 testDeleteEntries _tmpDir = TestCase $ do
