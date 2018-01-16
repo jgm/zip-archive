@@ -156,7 +156,7 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
                | OptVerbose                 -- ^ Print information to stderr
                | OptDestination FilePath    -- ^ Directory in which to extract
                | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
-               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such
+               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows.
                deriving (Read, Show, Eq)
 
 data ZipException =
