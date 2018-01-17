@@ -7,6 +7,8 @@ zip-archive 0.3.2
 
   * Require binary >= 0.6 (#36).
 
+  * Improve exit handling in zip-archive program.
+
 zip-archive 0.3.1.1
 
   * readEntry:  Read file as a strict ByteString.  This avoids
