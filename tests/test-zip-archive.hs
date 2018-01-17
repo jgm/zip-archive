@@ -70,8 +70,10 @@ testReadExternalZip _tmpDir = TestCase $ do
 
 testFromToArchive :: FilePath -> Test
 testFromToArchive _tmpDir = TestCase $ do
-  archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
-  assertEqual "for (toArchive $ fromArchive archive)" archive (toArchive $ fromArchive archive)
+  archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
+  assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
+  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive ["tests/test_dir_with_symlinks"]
+  assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
 
 testReadWriteEntry :: FilePath -> Test
 testReadWriteEntry tmpDir = TestCase $ do

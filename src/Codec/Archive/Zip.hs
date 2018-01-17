@@ -259,7 +259,6 @@ readEntry opts path = do
 #else
   fs <- getSymbolicLinkStatus path
   let isSymLink = isSymbolicLink fs
-
 #endif
   -- make sure directories end in / and deal with the OptLocation option
   let path' = let p = path ++ (case reverse path of
@@ -270,9 +269,16 @@ readEntry opts path = do
               (case [(l,a) | OptLocation l a <- opts] of
                     ((l,a):_) -> if a then l </> p else l </> takeFileName p
                     _         -> p)
-  contents <- if isDir
-                 then return B.empty
-                 else B.fromStrict <$> S.readFile path
+  contents <- if isSymLink
+                 then do
+                   linkTarget <- readSymbolicLink path
+                   return $ C.pack linkTarget
+                 else
+                   if isDir
+                      then
+                        return B.empty
+                      else
+                        B.fromStrict <$> S.readFile path
 #if MIN_VERSION_directory(1,2,0)
   modEpochTime <- fmap (floor . utcTimeToPOSIXSeconds)
                    $ getModificationTime path
@@ -291,19 +297,8 @@ readEntry opts path = do
                       else fileMode fs
 
            let modes = fromIntegral $ shiftL (toInteger fm) 16
-           if isSymLink
-            then do
-              linkTarget <- readSymbolicLink path
-              let targetBS = C.pack linkTarget
-              let targetSize = fromIntegral $ B.length targetBS
-              return $ entry { eExternalFileAttributes = modes,
-                               eVersionMadeBy = versionMadeBy,
-                               eCompressedData = targetBS,
-                               eCompressedSize = targetSize,
-                               eUncompressedSize = targetSize,
-                               eCompressionMethod = NoCompression }
-            else return $ entry { eExternalFileAttributes = modes,
-                                  eVersionMadeBy = versionMadeBy }
+           return $ entry { eExternalFileAttributes = modes,
+                            eVersionMadeBy = versionMadeBy }
 #endif
 
   when (OptVerbose `elem` opts) $ do
