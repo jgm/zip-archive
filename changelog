@@ -1,3 +1,12 @@
+zip-archive 0.3.2
+
+  * Add ZipOption to preserve symbolic links (#37, Tommaso Piazza).
+    Add OptPreserveSymbolicLinks constructor to ZipOption.  If this option
+    is set, symbolic links will be preserved.  Symbolic links are not
+    supported on Windows.
+
+  * Require binary >= 0.6 (#36).
+
 zip-archive 0.3.1.1
 
   * readEntry:  Read file as a strict ByteString.  This avoids

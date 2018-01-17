@@ -44,6 +44,14 @@ options =
    , Option ['h']   ["help"]       (NoArg Help)          "help"
    ]
 
+quit :: Bool -> String -> IO a
+quit failure msg = do
+  hPutStr stderr msg
+  _ <- exitWith $ if failure
+                     then ExitFailure 1
+                     else ExitSuccess
+  return undefined
+
 main :: IO ()
 main = do
   argv <- getArgs
@@ -53,9 +61,10 @@ main = do
       (o, _, _)      | Version `elem` o -> do
         putStrLn ("version " ++ showVersion version)
         exitWith ExitSuccess
-      (o, _, _)      | Help `elem` o    -> error $ usageInfo header options
+      (o, _, _)      | Help `elem` o    -> quit False $ usageInfo header options
       (o, (a:as), [])                   -> return (o, a:as)
-      (_, _, errs)                      -> error $ concat errs ++ "\n" ++ usageInfo header options
+      (_, [], [])                       -> quit True $ usageInfo header options
+      (_, _, errs)                      -> quit True $ concat errs ++ "\n" ++ usageInfo header options
   let verbosity = if Quiet `elem` opts then [] else [OptVerbose]
   let debug = Debug `elem` opts
   let cmd = case filter (`notElem` [Quiet, Help, Version, Debug]) opts of
