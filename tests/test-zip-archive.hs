@@ -70,8 +70,10 @@ testReadExternalZip _tmpDir = TestCase $ do
 
 testFromToArchive :: FilePath -> Test
 testFromToArchive _tmpDir = TestCase $ do
-  archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
-  assertEqual "for (toArchive $ fromArchive archive)" archive (toArchive $ fromArchive archive)
+  archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
+  assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
+  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive ["tests/test_dir_with_symlinks"]
+  assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
 
 testReadWriteEntry :: FilePath -> Test
 testReadWriteEntry tmpDir = TestCase $ do
@@ -89,6 +91,13 @@ testAddFilesOptions _tmpDir = TestCase $ do
   archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "src"]
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
+#ifndef _WINDOWS
+  archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive ["tests/test_dir_with_symlinks"]
+  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive ["tests/test_dir_with_symlinks"]
+  assertBool "for recursive and recursive by preserving symlinks addFilesToArchive"
+     (length (filesInArchive archive4) < length (filesInArchive archive3))
+#endif
+
 
 testDeleteEntries :: FilePath -> Test
 testDeleteEntries _tmpDir = TestCase $ do

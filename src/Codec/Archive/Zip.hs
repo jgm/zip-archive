@@ -70,7 +70,7 @@ import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
-import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
+import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing, )
 import Control.Monad ( when, unless, zipWithM )
 import qualified Control.Exception as E
 import System.Directory ( getModificationTime )
@@ -81,12 +81,13 @@ import qualified Data.Map as M
 import Control.Applicative
 #endif
 #ifndef _WINDOWS
-import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getFileStatus )
+import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink)
 #endif
 
 -- from bytestring
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy.Char8 as C (pack)
 
 -- text
 import qualified Data.Text.Lazy as TL
@@ -155,6 +156,7 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
                | OptVerbose                 -- ^ Print information to stderr
                | OptDestination FilePath    -- ^ Directory in which to extract
                | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
+               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows.
                deriving (Read, Show, Eq)
 
 data ZipException =
@@ -252,17 +254,34 @@ toEntry path modtime contents =
 readEntry :: [ZipOption] -> FilePath -> IO Entry
 readEntry opts path = do
   isDir <- doesDirectoryExist path
+#ifdef _WINDOWS
+  let isSymLink = False
+#else
+  fs <- getSymbolicLinkStatus path
+  let isSymLink = isSymbolicLink fs
+#endif
   -- make sure directories end in / and deal with the OptLocation option
   let path' = let p = path ++ (case reverse path of
                                     ('/':_) -> ""
-                                    _ | isDir -> "/"
+                                    _ | isDir && not isSymLink -> "/"
+                                    _ | isDir && isSymLink -> ""
                                       | otherwise -> "") in
               (case [(l,a) | OptLocation l a <- opts] of
                     ((l,a):_) -> if a then l </> p else l </> takeFileName p
                     _         -> p)
-  contents <- if isDir
-                 then return B.empty
-                 else B.fromStrict <$> S.readFile path
+  contents <-
+#ifndef _WINDOWS
+              if isSymLink
+                 then do
+                   linkTarget <- readSymbolicLink path
+                   return $ C.pack linkTarget
+                 else
+#endif
+                   if isDir
+                      then
+                        return B.empty
+                      else
+                        B.fromStrict <$> S.readFile path
 #if MIN_VERSION_directory(1,2,0)
   modEpochTime <- fmap (floor . utcTimeToPOSIXSeconds)
                    $ getModificationTime path
@@ -275,7 +294,11 @@ readEntry opts path = do
 #ifdef _WINDOWS
         return $ entry
 #else
-        do fm <- fmap fileMode $ getFileStatus path
+        do
+           let fm = if isSymLink
+                      then symbolicLinkMode
+                      else fileMode fs
+
            let modes = fromIntegral $ shiftL (toInteger fm) 16
            return $ entry { eExternalFileAttributes = modes,
                             eVersionMadeBy = versionMadeBy }
@@ -327,12 +350,17 @@ writeEntry opts entry = do
   setFileTimeStamp path (eLastModified entry)
 
 -- | Add the specified files to an 'Archive'.  If 'OptRecursive' is specified,
--- recursively add files contained in directories.  If 'OptVerbose' is specified,
+-- recursively add files contained in directories. if 'OptPreserveSymbolicLinks'
+-- is specified, don't recurse into it. If 'OptVerbose' is specified,
 -- print messages to stderr.
 addFilesToArchive :: [ZipOption] -> Archive -> [FilePath] -> IO Archive
 addFilesToArchive opts archive files = do
   filesAndChildren <- if OptRecursive `elem` opts
+#ifdef _WINDOWS
                          then mapM getDirectoryContentsRecursive files >>= return . nub . concat
+#else
+                         then mapM (getDirectoryContentsRecursive' opts) files >>= return . nub . concat
+#endif
                          else return files
   entries <- mapM (readEntry opts) filesAndChildren
   return $ foldr addEntryToArchive archive entries
@@ -426,18 +454,38 @@ msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTim
       (TOD epochsecs _) = addToClockTime timeSinceEpoch (TOD 0 0)
   in  epochsecs
 
+#ifndef _WINDOWS
+getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
+getDirectoryContentsRecursive' opts path = do
+  if OptPreserveSymbolicLinks `elem` opts
+     then do
+       isDir <- doesDirectoryExist path
+       if isDir
+          then do
+            isSymLink <- fmap isSymbolicLink $ getSymbolicLinkStatus path
+            if isSymLink
+               then return [path]
+               else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
+          else return [path]
+     else getDirectoryContentsRecursive path
+#endif
+
 getDirectoryContentsRecursive :: FilePath -> IO [FilePath]
 getDirectoryContentsRecursive path = do
   isDir <- doesDirectoryExist path
   if isDir
-     then do
+     then getDirectoryContentsRecursivelyBy getDirectoryContentsRecursive path
+     else return [path]
+
+getDirectoryContentsRecursivelyBy :: (FilePath -> IO [FilePath]) -> FilePath -> IO [FilePath]
+getDirectoryContentsRecursivelyBy exploreMethod path = do
        contents <- getDirectoryContents path
        let contents' = map (path </>) $ filter (`notElem` ["..","."]) contents
-       children <- mapM getDirectoryContentsRecursive contents'
+       children <- mapM exploreMethod contents'
        if path == "."
           then return (concat children)
           else return (path : concat children)
-     else return [path]
+
 
 setFileTimeStamp :: FilePath -> Integer -> IO ()
 setFileTimeStamp file epochtime = do
