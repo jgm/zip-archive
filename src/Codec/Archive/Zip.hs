@@ -269,11 +269,14 @@ readEntry opts path = do
               (case [(l,a) | OptLocation l a <- opts] of
                     ((l,a):_) -> if a then l </> p else l </> takeFileName p
                     _         -> p)
-  contents <- if isSymLink
+  contents <-
+#ifndef _WINDOWS
+              if isSymLink
                  then do
                    linkTarget <- readSymbolicLink path
                    return $ C.pack linkTarget
                  else
+#endif
                    if isDir
                       then
                         return B.empty
