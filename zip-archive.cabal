@@ -1,22 +1,22 @@
 Name:                zip-archive
-Version:             0.3.2
+Version:             0.3.2.1
 Cabal-Version:       >= 1.10
 Build-type:          Simple
 Synopsis:            Library for creating and modifying zip archives.
 Description:         The zip-archive library provides functions for creating, modifying,
                      and extracting files from zip archives.
 Category:            Codec
-Tested-with:         GHC == 7.8.2, GHC = 7.10.3, GHC = 8.0.2, GHC = 8.2.2
+Tested-with:         GHC == 7.8.2, GHC == 7.10.3, GHC == 8.0.2, GHC == 8.2.2
 License:             BSD3
 License-file:        LICENSE
 Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
-Extra-Source-Files:  changelog,
-                     README.markdown,
-                     tests/test4.zip,
-                     tests/test4/a.txt,
-                     tests/test4/b.bin,
+Extra-Source-Files:  changelog
+                     README.markdown
+                     tests/test4.zip
+                     tests/test4/a.txt
+                     tests/test4/b.bin
                      "tests/test4/c/with spaces.txt"
 
 Source-repository    head
@@ -65,7 +65,7 @@ Test-Suite test-zip-archive
   Main-Is:        test-zip-archive.hs
   Hs-Source-Dirs: tests
   Build-Depends:  base >= 4.2 && < 5,
-                  directory, bytestring >= 0.9.0, process, time, old-time,
+                  directory >= 1.3.1, bytestring >= 0.9.0, process, time, old-time,
                   HUnit, zip-archive, temporary
   Default-Language:  Haskell98
   Ghc-Options:    -Wall

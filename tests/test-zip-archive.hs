@@ -69,10 +69,16 @@ testReadExternalZip _tmpDir = TestCase $ do
                       BL.empty (fromEntry f)
 
 testFromToArchive :: FilePath -> Test
-testFromToArchive _tmpDir = TestCase $ do
+testFromToArchive tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
-  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive ["tests/test_dir_with_symlinks"]
+  let testdir = tmpDir ++ "/test_dir_with_symlinks"
+  createDirectory testdir
+  createDirectory (testdir ++ "/1")
+  writeFile (testdir ++ "/1/file.txt") "hello"
+  createFileLink (testdir ++ "/1/file.txt") (testdir ++ "/link_to_file")
+  createDirectoryLink (testdir ++ "/1") (testdir ++ "/link_to_directory")
+  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [tmpDir ++ "/test_dir_with_symlinks"]
   assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
 
 testReadWriteEntry :: FilePath -> Test
@@ -86,14 +92,22 @@ testReadWriteEntry tmpDir = TestCase $ do
   assertEqual "for readEntry -> writeEntry -> readEntry" entry entry''
 
 testAddFilesOptions :: FilePath -> Test
-testAddFilesOptions _tmpDir = TestCase $ do
+testAddFilesOptions tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [OptVerbose] emptyArchive ["LICENSE", "src"]
   archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "src"]
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
 #ifndef _WINDOWS
-  archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive ["tests/test_dir_with_symlinks"]
-  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive ["tests/test_dir_with_symlinks"]
+  let testdir = tmpDir ++ "/test_dir_with_symlinks2"
+  createDirectory testdir
+  createDirectory (testdir ++ "/1")
+  writeFile (testdir ++ "/1/file.txt") "hello"
+  createFileLink (testdir ++ "/1/file.txt") (testdir ++ "/link_to_file")
+  createDirectoryLink (testdir ++ "/1") (testdir ++ "/link_to_directory")
+  archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive [testdir]
+  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testdir]
+  mapM_ putStrLn $ filesInArchive archive3
+  mapM_ putStrLn $ filesInArchive archive4
   assertBool "for recursive and recursive by preserving symlinks addFilesToArchive"
      (length (filesInArchive archive4) < length (filesInArchive archive3))
 #endif
