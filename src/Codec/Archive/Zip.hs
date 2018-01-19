@@ -48,10 +48,18 @@ module Codec.Archive.Zip
        , findEntryByPath
        , fromEntry
        , toEntry
+#ifndef _WINDOWS
+       , isEntrySymbolicLink
+       , symbolicLinkEntryTarget
+       , entryCMode
+#endif
 
        -- * IO functions for working with zip archives
        , readEntry
        , writeEntry
+#ifndef _WINDOWS
+       , writeSymbolicLinkEntry
+#endif
        , addFilesToArchive
        , extractFilesFromArchive
 
@@ -65,12 +73,13 @@ import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.List ( nub, find, intercalate )
+import Data.List ( nub, find, intercalate, partition)
 import Data.Data (Data)
+import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
-import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing, )
+import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
 import Control.Monad ( when, unless, zipWithM )
 import qualified Control.Exception as E
 import System.Directory ( getModificationTime )
@@ -81,13 +90,14 @@ import qualified Data.Map as M
 import Control.Applicative
 #endif
 #ifndef _WINDOWS
-import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink)
+import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink )
+import System.Posix.Types ( CMode(..) )
 #endif
 
 -- from bytestring
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.Lazy.Char8 as C (pack)
+import qualified Data.ByteString.Lazy.Char8 as C (pack, unpack)
 
 -- text
 import qualified Data.Text.Lazy as TL
@@ -296,7 +306,7 @@ readEntry opts path = do
 #else
         do
            let fm = if isSymLink
-                      then symbolicLinkMode
+                      then unionFileModes symbolicLinkMode (fileMode fs)
                       else fileMode fs
 
            let modes = fromIntegral $ shiftL (toInteger fm) 16
@@ -342,12 +352,49 @@ writeEntry opts entry = do
 #ifndef _WINDOWS
        let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
        when (eVersionMadeBy entry .&. 0xFF00 == 0x0300 &&
-             modes /= 0) $ setFileMode path modes
+         modes /= 0) $ setFileMode path modes
 #endif
-
   -- Note that last modified times are supported only for POSIX, not for
   -- Windows.
   setFileTimeStamp path (eLastModified entry)
+
+#ifndef _WINDOWS
+-- | Write an 'Entry' representing a symbolic link to a file.
+-- If the 'Entry' does not represent a symbolic link or
+-- the options do not contain 'OptPreserveSymbolicLinks`, this
+-- function behaves like `writeEntry`.
+writeSymbolicLinkEntry :: [ZipOption] -> Entry -> IO ()
+writeSymbolicLinkEntry opts entry = do
+  if OptPreserveSymbolicLinks `notElem` opts
+     then writeEntry opts entry
+     else do
+        if (isEntrySymbolicLink entry)
+           then do
+             let prefixPath = case [d | OptDestination d <- opts] of
+                                   (x:_) -> x
+                                   _     -> ""
+             let targetPath = prefixPath </> (fromJust . symbolicLinkEntryTarget $ entry)
+             let symlinkPath = prefixPath </> eRelativePath entry
+             when (OptVerbose `elem` opts) $ do
+               hPutStrLn stderr $ "linking " ++ symlinkPath ++ " to " ++ targetPath
+             createSymbolicLink targetPath symlinkPath
+           else writeEntry opts entry
+
+
+-- | Get the target of a 'Entry' representing a symbolic link. This might fail
+-- if the 'Entry' does not represent a symbolic link
+symbolicLinkEntryTarget :: Entry -> Maybe FilePath
+symbolicLinkEntryTarget entry | isEntrySymbolicLink entry = Just . C.unpack $ fromEntry entry
+                              | otherwise = Nothing
+
+-- | Check if an 'Entry' represents a symbolic link
+isEntrySymbolicLink :: Entry -> Bool
+isEntrySymbolicLink entry = entryCMode entry .&. symbolicLinkMode == symbolicLinkMode
+
+-- | Get the 'eExternalFileAttributes' of an 'Entry' as a 'CMode' a.k.a. 'FileMode'
+entryCMode :: Entry -> CMode
+entryCMode entry = CMode (fromIntegral $ shiftR (eExternalFileAttributes entry) 16)
+#endif
 
 -- | Add the specified files to an 'Archive'.  If 'OptRecursive' is specified,
 -- recursively add files contained in directories. if 'OptPreserveSymbolicLinks'
@@ -370,8 +417,16 @@ addFilesToArchive opts archive files = do
 -- Note that the last-modified time is set correctly only in POSIX,
 -- not in Windows.
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
-extractFilesFromArchive opts archive =
-  mapM_ (writeEntry opts) $ zEntries archive
+extractFilesFromArchive opts archive = do
+  if OptPreserveSymbolicLinks `elem` opts
+    then do
+#ifdef _WINDOWS
+      mapM_ (writeEntry opts) $ zEntries archive
+#endif
+      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink $ zEntries archive
+      mapM_ (writeEntry opts) $ nonSymbolicLinkEntries
+      mapM_ (writeSymbolicLinkEntry opts) $ symbolicLinkEntries
+    else mapM_ (writeEntry opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
