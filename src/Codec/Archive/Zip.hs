@@ -270,7 +270,7 @@ readEntry opts path = do
   fs <- getSymbolicLinkStatus path
   let isSymLink = isSymbolicLink fs
 #endif
-  -- make sure directories end in / and deal with the OptLocation option
+ -- make sure directories end in / and deal with the OptLocation option
   let path' = let p = path ++ (case reverse path of
                                     ('/':_) -> ""
                                     _ | isDir && not isSymLink -> "/"
@@ -422,10 +422,11 @@ extractFilesFromArchive opts archive = do
     then do
 #ifdef _WINDOWS
       mapM_ (writeEntry opts) $ zEntries archive
-#endif
+#else
       let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink $ zEntries archive
       mapM_ (writeEntry opts) $ nonSymbolicLinkEntries
       mapM_ (writeSymbolicLinkEntry opts) $ symbolicLinkEntries
+#endif
     else mapM_ (writeEntry opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
@@ -519,9 +520,11 @@ getDirectoryContentsRecursive' opts path = do
           then do
             isSymLink <- fmap isSymbolicLink $ getSymbolicLinkStatus path
             if isSymLink
-               then return [path]
+               then do
+                 return [path]
                else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
-          else return [path]
+          else do
+            return [path]
      else getDirectoryContentsRecursive path
 #endif
 
