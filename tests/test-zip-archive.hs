@@ -75,6 +75,7 @@ testFromToArchive :: FilePath -> Test
 testFromToArchive tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
+#ifndef _WINDOWS
   let testdir = tmpDir </> "test_dir_with_symlinks"
   createDirectoryIfMissing True testdir
   createDirectoryIfMissing True (testdir </> "1")
@@ -84,6 +85,7 @@ testFromToArchive tmpDir = TestCase $ do
   createSymbolicLink (cwd </> testdir </> "1") (testdir </> "link_to_directory")
   archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testdir]
   assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
+#endif
 
 testReadWriteEntry :: FilePath -> Test
 testReadWriteEntry tmpDir = TestCase $ do
