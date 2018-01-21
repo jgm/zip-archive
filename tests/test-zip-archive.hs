@@ -4,12 +4,11 @@
 -- runghc Test.hs
 
 import Codec.Archive.Zip
-import System.Directory
+import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
-import Control.Applicative
 import System.Exit
 import System.IO.Temp (withTempDirectory)
 
@@ -28,6 +27,23 @@ instance Eq Archive where
              && (all id $ zipWith (\x y -> x { eLastModified = eLastModified x `div` 2  } ==
                                            y { eLastModified = eLastModified y `div` 2  }) (zEntries a1) (zEntries a2))
 
+#ifndef _WINDOWS
+
+createTestDirectoryWithSymlinks :: FilePath -> FilePath -> IO FilePath
+createTestDirectoryWithSymlinks prefixDir  baseDir = do
+  let testDir = prefixDir </> baseDir
+  createDirectoryIfMissing True testDir
+  createDirectoryIfMissing True (testDir </> "1")
+  writeFile (testDir </> "1/file.txt") "hello"
+  cwd <- getCurrentDirectory
+  createFileLink (cwd </> testDir </> "1/file.txt") (testDir </> "link_to_file")
+  createSymbolicLink (cwd </> testDir </> "1") (testDir </> "link_to_directory")
+  return testDir
+
+#endif
+
+
+
 main :: IO Counts
 main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
   res   <- runTestTT $ TestList $ map (\f -> f tmpDir)
@@ -40,6 +56,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testExtractFiles
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
+                                , testArchiveExtractSymlinks
 #endif
                                 ]
   exitWith $ case (failures res + errors res) of
@@ -76,14 +93,8 @@ testFromToArchive tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
 #ifndef _WINDOWS
-  let testdir = tmpDir </> "test_dir_with_symlinks"
-  createDirectoryIfMissing True testdir
-  createDirectoryIfMissing True (testdir </> "1")
-  writeFile (testdir </> "1/file.txt") "hello"
-  cwd <- getCurrentDirectory
-  createFileLink (cwd </> testdir </> "1/file.txt") (testdir </> "link_to_file")
-  createSymbolicLink (cwd </> testdir </> "1") (testdir </> "link_to_directory")
-  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testdir]
+  testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks"
+  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testDir]
   assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
 #endif
 
@@ -104,15 +115,9 @@ testAddFilesOptions tmpDir = TestCase $ do
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
 #ifndef _WINDOWS
-  let testdir = tmpDir </> "test_dir_with_symlinks2"
-  createDirectoryIfMissing True testdir
-  createDirectoryIfMissing True (testdir </> "1")
-  writeFile (testdir </> "1/file.txt") "hello"
-  cwd <- getCurrentDirectory
-  createFileLink (cwd </> testdir </> "1/file.txt") (testdir </> "link_to_file")
-  createDirectoryLink (cwd </>testdir </> "1") (testdir </> "link_to_directory")
-  archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive [testdir]
-  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testdir]
+  testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks2"
+  archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive [testDir]
+  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testDir]
   mapM_ putStrLn $ filesInArchive archive3
   mapM_ putStrLn $ filesInArchive archive4
   assertBool "for recursive and recursive by preserving symlinks addFilesToArchive"
@@ -144,6 +149,7 @@ testExtractFiles tmpDir = TestCase $ do
   assertEqual ("contents of " </> tmpDir </> "dir1/dir2/hello") helloMsg hello
 
 #ifndef _WINDOWS
+
 testExtractFilesWithPosixAttrs :: FilePath -> Test
 testExtractFilesWithPosixAttrs tmpDir = TestCase $ do
   createDirectory (tmpDir </> "dir3")
@@ -158,4 +164,19 @@ testExtractFilesWithPosixAttrs tmpDir = TestCase $ do
   fm <- fmap fileMode $ getFileStatus (tmpDir </> "dir3/hi")
   assertEqual "file modes" perms (intersectFileModes perms fm)
   assertEqual ("contents of " </> tmpDir </> "dir3/hi") hiMsg hi
+
+
+testArchiveExtractSymlinks :: FilePath -> Test
+testArchiveExtractSymlinks tmpDir = TestCase $ do
+  testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks3"
+  let locationDir = "location_dir"
+  archive <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks, OptLocation locationDir True] emptyArchive [testDir]
+  removeDirectoryRecursive testDir
+  let destination = "test_dest"
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination destination] archive
+  isDirSymlink <- pathIsSymbolicLink (destination </> locationDir </> testDir </> "link_to_directory")
+  isFileSymlink <- pathIsSymbolicLink (destination </> locationDir </> testDir </> "link_to_file")
+  assertBool "Symbolic link to directory is preserved" isDirSymlink
+  assertBool "Symbolic link to file is preserved" isFileSymlink
+  removeDirectoryRecursive destination
 #endif
