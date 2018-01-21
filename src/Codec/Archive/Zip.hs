@@ -520,11 +520,9 @@ getDirectoryContentsRecursive' opts path = do
           then do
             isSymLink <- fmap isSymbolicLink $ getSymbolicLinkStatus path
             if isSymLink
-               then do
-                 return [path]
+               then return [path]
                else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
-          else do
-            return [path]
+          else return [path]
      else getDirectoryContentsRecursive path
 #endif
 
