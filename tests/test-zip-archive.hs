@@ -14,7 +14,10 @@ import System.Exit
 import System.IO.Temp (withTempDirectory)
 
 #ifndef _WINDOWS
+import System.FilePath.Posix
 import System.Posix.Files
+#else
+import System.FilePath.Windows
 #endif
 
 -- define equality for Archives so timestamps aren't distinguished if they
@@ -46,8 +49,8 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
 testReadWriteArchive :: FilePath -> Test
 testReadWriteArchive tmpDir = TestCase $ do
   archive <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
-  BL.writeFile (tmpDir ++ "/test1.zip") $ fromArchive archive
-  archive' <- toArchive <$> BL.readFile (tmpDir ++ "/test1.zip")
+  BL.writeFile (tmpDir </> "test1.zip") $ fromArchive archive
+  archive' <- toArchive <$> BL.readFile (tmpDir </> "test1.zip")
   assertEqual "for writing and reading test1.zip" archive archive'
   assertEqual "for writing and reading test1.zip" archive archive'
 
@@ -72,13 +75,14 @@ testFromToArchive :: FilePath -> Test
 testFromToArchive tmpDir = TestCase $ do
   archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
-  let testdir = tmpDir ++ "/test_dir_with_symlinks"
-  createDirectory testdir
-  createDirectory (testdir ++ "/1")
-  writeFile (testdir ++ "/1/file.txt") "hello"
-  createFileLink (testdir ++ "/1/file.txt") (testdir ++ "/link_to_file")
-  createDirectoryLink (testdir ++ "/1") (testdir ++ "/link_to_directory")
-  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [tmpDir ++ "/test_dir_with_symlinks"]
+  let testdir = tmpDir </> "test_dir_with_symlinks"
+  createDirectoryIfMissing True testdir
+  createDirectoryIfMissing True (testdir </> "1")
+  writeFile (testdir </> "1/file.txt") "hello"
+  cwd <- getCurrentDirectory
+  createFileLink (cwd </> testdir </> "1/file.txt") (testdir </> "link_to_file")
+  createSymbolicLink (cwd </> testdir </> "1") (testdir </> "link_to_directory")
+  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testdir]
   assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
 
 testReadWriteEntry :: FilePath -> Test
@@ -87,7 +91,7 @@ testReadWriteEntry tmpDir = TestCase $ do
   setCurrentDirectory tmpDir
   writeEntry [] entry
   setCurrentDirectory ".."
-  entry' <- readEntry [] (tmpDir ++ "/zip-archive.cabal")
+  entry' <- readEntry [] (tmpDir </> "zip-archive.cabal")
   let entry'' = entry' { eRelativePath = eRelativePath entry, eLastModified = eLastModified entry }
   assertEqual "for readEntry -> writeEntry -> readEntry" entry entry''
 
@@ -98,12 +102,13 @@ testAddFilesOptions tmpDir = TestCase $ do
   assertBool "for recursive and nonrecursive addFilesToArchive"
      (length (filesInArchive archive1) < length (filesInArchive archive2))
 #ifndef _WINDOWS
-  let testdir = tmpDir ++ "/test_dir_with_symlinks2"
-  createDirectory testdir
-  createDirectory (testdir ++ "/1")
-  writeFile (testdir ++ "/1/file.txt") "hello"
-  createFileLink (testdir ++ "/1/file.txt") (testdir ++ "/link_to_file")
-  createDirectoryLink (testdir ++ "/1") (testdir ++ "/link_to_directory")
+  let testdir = tmpDir </> "test_dir_with_symlinks2"
+  createDirectoryIfMissing True testdir
+  createDirectoryIfMissing True (testdir </> "1")
+  writeFile (testdir </> "1/file.txt") "hello"
+  cwd <- getCurrentDirectory
+  createFileLink (cwd </> testdir </> "1/file.txt") (testdir </> "link_to_file")
+  createDirectoryLink (cwd </>testdir </> "1") (testdir </> "link_to_directory")
   archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive [testdir]
   archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testdir]
   mapM_ putStrLn $ filesInArchive archive3
@@ -122,33 +127,33 @@ testDeleteEntries _tmpDir = TestCase $ do
 
 testExtractFiles :: FilePath -> Test
 testExtractFiles tmpDir = TestCase $ do
-  createDirectory (tmpDir ++ "/dir1")
-  createDirectory (tmpDir ++ "/dir1/dir2")
+  createDirectory (tmpDir </> "dir1")
+  createDirectory (tmpDir </> "dir1/dir2")
   let hiMsg = BS.pack "hello there"
   let helloMsg = BS.pack "Hello there. This file is very long.  Longer than 31 characters."
-  BS.writeFile (tmpDir ++ "/dir1/hi") hiMsg
-  BS.writeFile (tmpDir ++ "/dir1/dir2/hello") helloMsg
-  archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir ++ "/dir1")]
-  removeDirectoryRecursive (tmpDir ++ "/dir1")
+  BS.writeFile (tmpDir </> "dir1/hi") hiMsg
+  BS.writeFile (tmpDir </> "dir1/dir2/hello") helloMsg
+  archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir </> "dir1")]
+  removeDirectoryRecursive (tmpDir </> "dir1")
   extractFilesFromArchive [OptVerbose] archive
-  hi <- BS.readFile (tmpDir ++ "/dir1/hi")
-  hello <- BS.readFile (tmpDir ++ "/dir1/dir2/hello")
-  assertEqual ("contents of " ++ tmpDir ++ "/dir1/hi") hiMsg hi
-  assertEqual ("contents of " ++ tmpDir ++ "/dir1/dir2/hello") helloMsg hello
+  hi <- BS.readFile (tmpDir </> "dir1/hi")
+  hello <- BS.readFile (tmpDir </> "dir1/dir2/hello")
+  assertEqual ("contents of " </> tmpDir </> "dir1/hi") hiMsg hi
+  assertEqual ("contents of " </> tmpDir </> "dir1/dir2/hello") helloMsg hello
 
 #ifndef _WINDOWS
 testExtractFilesWithPosixAttrs :: FilePath -> Test
 testExtractFilesWithPosixAttrs tmpDir = TestCase $ do
-  createDirectory (tmpDir ++ "/dir3")
+  createDirectory (tmpDir </> "dir3")
   let hiMsg = "hello there"
-  writeFile (tmpDir ++ "/dir3/hi") hiMsg
+  writeFile (tmpDir </> "dir3/hi") hiMsg
   let perms = unionFileModes ownerReadMode $ unionFileModes ownerWriteMode ownerExecuteMode
-  setFileMode (tmpDir ++ "/dir3/hi") perms
-  archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir ++ "/dir3")]
-  removeDirectoryRecursive (tmpDir ++ "/dir3")
+  setFileMode (tmpDir </> "dir3/hi") perms
+  archive <- addFilesToArchive [OptRecursive] emptyArchive [(tmpDir </> "dir3")]
+  removeDirectoryRecursive (tmpDir </> "dir3")
   extractFilesFromArchive [OptVerbose] archive
-  hi <- readFile (tmpDir ++ "/dir3/hi")
-  fm <- fmap fileMode $ getFileStatus (tmpDir ++ "/dir3/hi")
+  hi <- readFile (tmpDir </> "dir3/hi")
+  fm <- fmap fileMode $ getFileStatus (tmpDir </> "dir3/hi")
   assertEqual "file modes" perms (intersectFileModes perms fm)
-  assertEqual ("contents of " ++ tmpDir ++ "/dir3/hi") hiMsg hi
+  assertEqual ("contents of " </> tmpDir </> "dir3/hi") hiMsg hi
 #endif
