@@ -373,7 +373,7 @@ writeSymbolicLinkEntry opts entry = do
              let prefixPath = case [d | OptDestination d <- opts] of
                                    (x:_) -> x
                                    _     -> ""
-             let targetPath = prefixPath </> (fromJust . symbolicLinkEntryTarget $ entry)
+             let targetPath = fromJust . symbolicLinkEntryTarget $ entry
              let symlinkPath = prefixPath </> eRelativePath entry
              when (OptVerbose `elem` opts) $ do
                hPutStrLn stderr $ "linking " ++ symlinkPath ++ " to " ++ targetPath
