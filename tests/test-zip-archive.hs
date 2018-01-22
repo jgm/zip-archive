@@ -4,6 +4,7 @@
 -- runghc Test.hs
 
 import Codec.Archive.Zip
+import Control.Applicative
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -15,6 +16,7 @@ import System.IO.Temp (withTempDirectory)
 #ifndef _WINDOWS
 import System.FilePath.Posix
 import System.Posix.Files
+import System.Process (callCommand)
 #else
 import System.FilePath.Windows
 #endif
@@ -57,6 +59,8 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
+                                , testExtractExternalZipWithSymlinks
+                                , testArchiveAndUnzip
 #endif
                                 ]
   exitWith $ case (failures res + errors res) of
@@ -165,7 +169,6 @@ testExtractFilesWithPosixAttrs tmpDir = TestCase $ do
   assertEqual "file modes" perms (intersectFileModes perms fm)
   assertEqual ("contents of " </> tmpDir </> "dir3/hi") hiMsg hi
 
-
 testArchiveExtractSymlinks :: FilePath -> Test
 testArchiveExtractSymlinks tmpDir = TestCase $ do
   testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks3"
@@ -179,4 +182,43 @@ testArchiveExtractSymlinks tmpDir = TestCase $ do
   assertBool "Symbolic link to directory is preserved" isDirSymlink
   assertBool "Symbolic link to file is preserved" isFileSymlink
   removeDirectoryRecursive destination
+
+testExtractExternalZipWithSymlinks :: FilePath -> Test
+testExtractExternalZipWithSymlinks tmpDir = TestCase $ do
+  archive <- toArchive <$> BL.readFile "tests/zip_with_symlinks.zip"
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination tmpDir] archive
+  let zipRootDir = "zip_test_dir_with_symlinks"
+      symlinkDir = tmpDir </> zipRootDir </> "symlink_to_dir_1"
+      symlinkFile = tmpDir </> zipRootDir </> "symlink_to_file_1"
+  isDirSymlink <- pathIsSymbolicLink symlinkDir
+  targetDirExists <- doesDirectoryExist symlinkDir
+  isFileSymlink <- pathIsSymbolicLink symlinkFile
+  targetFileExists <- doesFileExist symlinkFile
+  assertBool "Symbolic link to directory is preserved" isDirSymlink
+  assertBool "Target directory exists" targetDirExists
+  assertBool "Symbolic link to file is preserved" isFileSymlink
+  assertBool "Target file exists" targetFileExists
+  removeDirectoryRecursive tmpDir
+
+testArchiveAndUnzip :: FilePath -> Test
+testArchiveAndUnzip tmpDir = TestCase $ do
+  let dir = "test_dir_with_symlinks4"
+  testDir <- createTestDirectoryWithSymlinks tmpDir dir
+  archive <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testDir]
+  removeDirectoryRecursive testDir
+  let zipFile = tmpDir </> "testUnzip.zip"
+  BL.writeFile zipFile $ fromArchive archive
+  callCommand $ "unzip " ++ zipFile
+  let symlinkDir = testDir </> "link_to_directory"
+      symlinkFile = testDir </> "link_to_file"
+  isDirSymlink <- pathIsSymbolicLink symlinkDir
+  targetDirExists <- doesDirectoryExist symlinkDir
+  isFileSymlink <- pathIsSymbolicLink symlinkFile
+  targetFileExists <- doesFileExist symlinkFile
+  assertBool "Symbolic link to directory is preserved" isDirSymlink
+  assertBool "Target directory exists" targetDirExists
+  assertBool "Symbolic link to file is preserved" isFileSymlink
+  assertBool "Target file exists" targetFileExists
+  removeDirectoryRecursive tmpDir
+
 #endif
