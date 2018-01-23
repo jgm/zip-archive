@@ -38,7 +38,7 @@ createTestDirectoryWithSymlinks prefixDir  baseDir = do
   createDirectoryIfMissing True (testDir </> "1")
   writeFile (testDir </> "1/file.txt") "hello"
   cwd <- getCurrentDirectory
-  createFileLink (cwd </> testDir </> "1/file.txt") (testDir </> "link_to_file")
+  createSymbolicLink (cwd </> testDir </> "1/file.txt") (testDir </> "link_to_file")
   createSymbolicLink (cwd </> testDir </> "1") (testDir </> "link_to_directory")
   return testDir
 
