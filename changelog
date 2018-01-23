@@ -1,3 +1,8 @@
+zip-archive 0.3.2.2
+
+  * Use createSymbolicLink instead of createFileLink in tests. This allows
+    us to lower the directory lower bound (#40).
+
 zip-archive 0.3.2.1
 
   * Fixes for handling of symbolic links (#39, Tommaso Piazza).
