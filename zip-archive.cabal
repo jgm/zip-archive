@@ -74,3 +74,5 @@ Test-Suite test-zip-archive
     cpp-options:     -D_WINDOWS
   else
     Build-depends:   unix
+  -- Needed for Nix Packages
+  Build-tools: zip, unzip
