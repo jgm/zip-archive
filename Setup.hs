@@ -1,2 +1,10 @@
+module Main (main) where
+
 import Distribution.Simple
-main = defaultMain
+import Distribution.Simple.Program
+
+main :: IO ()
+main = defaultMainWithHooks simpleUserHooks
+  {
+    hookedPrograms = [ simpleProgram "zip", simpleProgram "unzip"]
+  }

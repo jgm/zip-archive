@@ -1,7 +1,7 @@
 Name:                zip-archive
 Version:             0.3.2.2
-Cabal-Version:       >= 1.10
-Build-type:          Simple
+Cabal-Version:       >= 1.24
+Build-type:          Custom
 Synopsis:            Library for creating and modifying zip archives.
 Description:         The zip-archive library provides functions for creating, modifying,
                      and extracting files from zip archives.
@@ -74,3 +74,10 @@ Test-Suite test-zip-archive
     cpp-options:     -D_WINDOWS
   else
     Build-depends:   unix
+  -- Needed for Nix Packages
+  Build-tools: unzip
+
+custom-setup
+  setup-depends:
+    base >= 3 && < 5, Cabal >= 1.24
+    
