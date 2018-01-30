@@ -79,5 +79,5 @@ Test-Suite test-zip-archive
 
 custom-setup
   setup-depends:
-    base >= 3 && < 5, Cabal > 1.2
+    base >= 3 && < 5, Cabal >= 1.24
     
