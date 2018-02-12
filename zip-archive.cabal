@@ -61,7 +61,12 @@ Executable zip-archive
   Ghc-Options:       -Wall
   Default-Language:  Haskell98
 
+flag enable_extra_tools
+  default: False
+
 Test-Suite test-zip-archive
+  If flag(enable_extra_tools)
+    cpp-options:     -D_ENABLE_EXTRA_TOOLS
   Type:           exitcode-stdio-1.0
   Main-Is:        test-zip-archive.hs
   Hs-Source-Dirs: tests
