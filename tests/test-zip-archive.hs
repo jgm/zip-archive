@@ -16,7 +16,7 @@ import System.IO.Temp (withTempDirectory)
 #ifndef _WINDOWS
 import System.FilePath.Posix
 import System.Posix.Files
-import System.Process (callCommand)
+import System.Process (rawSystem)
 #else
 import System.FilePath.Windows
 #endif
@@ -208,7 +208,8 @@ testArchiveAndUnzip tmpDir = TestCase $ do
   removeDirectoryRecursive testDir
   let zipFile = tmpDir </> "testUnzip.zip"
   BL.writeFile zipFile $ fromArchive archive
-  callCommand $ "unzip " ++ zipFile
+  ec <- rawSystem "unzip" [zipFile]
+  assertBool "unzip succeeds" $ ec == ExitSuccess
   let symlinkDir = testDir </> "link_to_directory"
       symlinkFile = testDir </> "link_to_file"
   isDirSymlink <- pathIsSymbolicLink symlinkDir
