@@ -112,7 +112,7 @@ install:
   case "$BUILD" in
     stack)
       ulimit -n 4096
-      stack --no-terminal --install-ghc $ARGS test --flag 'aeson:fast' --flag 'zip-archive:executable' --only-dependencies --ghc-options="-O0"
+      stack --no-terminal --install-ghc $ARGS test --flag 'aeson:fast' --only-dependencies --ghc-options="-O0"
       ;;
     cabal)
       cabal --version
