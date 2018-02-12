@@ -134,6 +134,6 @@ script:
       cd sourcedist && \
       cabal configure --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
       cabal build -j2 && \
-      cabal test --ghc-options="-fenable_extra_tools"
+      cabal test
       ;;
   esac
