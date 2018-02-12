@@ -6,7 +6,7 @@ Contributing
 Before submitting a PR please run the test by executing
 
 ```
-$ stack test --flag 'zip-archive:enable_extra_tools' # or cabal test -fenable_extra_tools
+$ stack test --flag 'zip-archive:enable_extra_tools'
 ```
 
 # Gotchas
