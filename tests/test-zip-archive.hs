@@ -60,7 +60,9 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
                                 , testExtractExternalZipWithSymlinks
+#ifdef _ENABLE_EXTRA_TOOLS
                                 , testArchiveAndUnzip
+#endif
 #endif
                                 ]
   exitWith $ case (failures res + errors res) of
@@ -200,6 +202,7 @@ testExtractExternalZipWithSymlinks tmpDir = TestCase $ do
   assertBool "Target file exists" targetFileExists
   removeDirectoryRecursive tmpDir
 
+#ifdef _ENABLE_EXTRA_TOOLS
 testArchiveAndUnzip :: FilePath -> Test
 testArchiveAndUnzip tmpDir = TestCase $ do
   let dir = "test_dir_with_symlinks4"
@@ -220,5 +223,6 @@ testArchiveAndUnzip tmpDir = TestCase $ do
   assertBool "Symbolic link to file is preserved" isFileSymlink
   assertBool "Target file exists" targetFileExists
   removeDirectoryRecursive tmpDir
+#endif
 
 #endif

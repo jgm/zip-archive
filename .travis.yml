@@ -126,7 +126,7 @@ script:
   case "$BUILD" in
     stack)
       ulimit -n 4096
-      stack --no-terminal $ARGS test --fast --flag 'aeson:fast' --flag 'texmath:executable' --haddock --no-haddock-deps --ghc-options="$OPTS"
+      stack --no-terminal $ARGS test --fast --flag 'aeson:fast' --flag 'texmath:executable' --flag 'zip-archive:enable_extra_tools' --haddock --no-haddock-deps --ghc-options="$OPTS"
       ;;
     cabal)
       cabal configure --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
@@ -134,6 +134,6 @@ script:
       cd sourcedist && \
       cabal configure --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
       cabal build -j2 && \
-      cabal test
+      cabal test -fenable_extra_tools
       ;;
   esac
