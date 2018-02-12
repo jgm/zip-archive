@@ -1,3 +1,7 @@
+zip-archive 0.3.2.3
+
+  * Use custom-setup stanza and specify build-tools.  Closes #41.
+
 zip-archive 0.3.2.2
 
   * Use createSymbolicLink instead of createFileLink in tests. This allows
