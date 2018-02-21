@@ -1,3 +1,7 @@
+zip-archive 0.3.2.4
+
+  * Make build-tools stanza conditional on non-windows. Closes #44.
+
 zip-archive 0.3.2.3
 
   * Use custom-setup stanza and specify build-tools.  Closes #41.
