@@ -1,3 +1,9 @@
+zip-archive 0.3.2.5
+
+  * Move 'build-tools: unzip' from library stanza to test stanza.
+    unzip should only be required for testing, not for regular
+    builds of the library.
+
 zip-archive 0.3.2.4
 
   * Make build-tools stanza conditional on non-windows. Closes #44.
