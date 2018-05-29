@@ -47,7 +47,6 @@ Library
     cpp-options:     -D_WINDOWS
   else
     Build-depends:   unix
-    Build-tools:     unzip
 
 custom-setup
   setup-depends: base, Cabal
@@ -77,4 +76,5 @@ Test-Suite test-zip-archive
   if os(windows)
     cpp-options:     -D_WINDOWS
   else
+    Build-tools:     unzip
     Build-depends:   unix
