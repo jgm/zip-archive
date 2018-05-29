@@ -105,22 +105,6 @@ before_install:
     curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
   fi
 
-install:
-- echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
-- if [ -f configure.ac ]; then autoreconf -i; fi
-- |
-  case "$BUILD" in
-    stack)
-      ulimit -n 4096
-      stack --no-terminal --install-ghc $ARGS test --only-dependencies --ghc-options="-O0"
-      ;;
-    cabal)
-      cabal --version
-      travis_retry cabal update
-      cabal install -j --enable-tests --only-dependencies -ffast --force-reinstalls --reorder-goals --ghc-options="-O0" --max-backjumps=-1 $CABALARGS
-      ;;
-  esac
-
 script:
 - |
   case "$BUILD" in
@@ -129,11 +113,9 @@ script:
       stack --no-terminal $ARGS test --fast --flag 'zip-archive:executable' --haddock --no-haddock-deps --ghc-options="$OPTS"
       ;;
     cabal)
-      cabal configure --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
       cabal sdist --output-directory=sourcedist && \
       cd sourcedist && \
-      cabal configure --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
-      cabal build -j2 && \
+      cabal install --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
       cabal test
       ;;
   esac
