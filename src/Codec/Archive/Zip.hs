@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ViewPatterns #-}
 ------------------------------------------------------------------------
 -- |
 -- Module      : Codec.Archive.Zip
@@ -65,10 +66,10 @@ module Codec.Archive.Zip
 
        ) where
 
-import System.Time ( toUTCTime, addToClockTime, CalendarTime (..), ClockTime (..), TimeDiff (..) )
-#if MIN_VERSION_directory(1,2,0)
-import Data.Time.Clock.POSIX ( utcTimeToPOSIXSeconds )
-#endif
+import Data.Time.Calendar ( toGregorian, fromGregorian )
+import Data.Time.Clock ( UTCTime(..) )
+import Data.Time.Clock.POSIX ( posixSecondsToUTCTime, utcTimeToPOSIXSeconds )
+import Data.Time.LocalTime ( TimeOfDay(..), timeToTimeOfDay )
 import Data.Bits ( shiftL, shiftR, (.&.) )
 import Data.Binary
 import Data.Binary.Get
@@ -292,12 +293,8 @@ readEntry opts path = do
                         return B.empty
                       else
                         B.fromStrict <$> S.readFile path
-#if MIN_VERSION_directory(1,2,0)
   modEpochTime <- fmap (floor . utcTimeToPOSIXSeconds)
                    $ getModificationTime path
-#else
-  (TOD modEpochTime _) <- getModificationTime path
-#endif
   let entry = toEntry path' modEpochTime contents
 
   entryE <-
@@ -485,9 +482,14 @@ epochTimeToMSDOSDateTime epochtime | epochtime < minMSDOSDateTime =
   epochTimeToMSDOSDateTime minMSDOSDateTime
   -- if time is earlier than minimum DOS datetime, return minimum
 epochTimeToMSDOSDateTime epochtime =
-  let ut = toUTCTime (TOD epochtime 0)
-      dosTime = toEnum $ (ctSec ut `div` 2) + shiftL (ctMin ut) 5 + shiftL (ctHour ut) 11
-      dosDate = toEnum $ ctDay ut + shiftL (fromEnum (ctMonth ut) + 1) 5 + shiftL (ctYear ut - 1980) 9
+  let 
+    UTCTime
+      (toGregorian -> (fromInteger -> year, month, day))
+      (timeToTimeOfDay -> (TimeOfDay hour min (floor -> sec))) 
+      = posixSecondsToUTCTime (fromIntegral epochtime)
+
+    dosTime = toEnum $ (sec `div` 2) + shiftL min 5 + shiftL hour 11
+    dosDate = toEnum $ day + shiftL month 5 + shiftL (year - 1980) 9
   in  MSDOSDateTime { msDOSDate = dosDate, msDOSTime = dosTime }
 
 -- | Convert a MSDOS datetime to a 'ClockTime'.
@@ -497,18 +499,10 @@ msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTim
       minutes = fromIntegral $ (shiftR dosTime 5) .&. 0O77
       hour    = fromIntegral $ shiftR dosTime 11
       day     = fromIntegral $ dosDate .&. 0O37
-      month   = fromIntegral $ ((shiftR dosDate 5) .&. 0O17) - 1
+      month   = fromIntegral $ ((shiftR dosDate 5) .&. 0O17)
       year    = fromIntegral $ shiftR dosDate 9
-      timeSinceEpoch = TimeDiff
-               { tdYear = year + 10, -- dos times since 1980, unix epoch starts 1970
-                 tdMonth = month,
-                 tdDay = day - 1,  -- dos days start from 1
-                 tdHour = hour,
-                 tdMin = minutes,
-                 tdSec = seconds,
-                 tdPicosec = 0 }
-      (TOD epochsecs _) = addToClockTime timeSinceEpoch (TOD 0 0)
-  in  epochsecs
+      utc = UTCTime (fromGregorian (1980 + fromIntegral year) month day) (fromIntegral $ 3600 * hour + 60 * minutes + seconds)
+  in floor (utcTimeToPOSIXSeconds utc)
 
 #ifndef _WINDOWS
 getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
