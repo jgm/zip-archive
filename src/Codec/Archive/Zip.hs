@@ -485,10 +485,10 @@ epochTimeToMSDOSDateTime epochtime =
   let 
     UTCTime
       (toGregorian -> (fromInteger -> year, month, day))
-      (timeToTimeOfDay -> (TimeOfDay hour min (floor -> sec))) 
+      (timeToTimeOfDay -> (TimeOfDay hour minutes (floor -> sec))) 
       = posixSecondsToUTCTime (fromIntegral epochtime)
 
-    dosTime = toEnum $ (sec `div` 2) + shiftL min 5 + shiftL hour 11
+    dosTime = toEnum $ (sec `div` 2) + shiftL minutes 5 + shiftL hour 11
     dosDate = toEnum $ day + shiftL month 5 + shiftL (year - 1980) 9
   in  MSDOSDateTime { msDOSDate = dosDate, msDOSTime = dosTime }
 
@@ -501,7 +501,7 @@ msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTim
       day     = fromIntegral $ dosDate .&. 0O37
       month   = fromIntegral $ ((shiftR dosDate 5) .&. 0O17)
       year    = fromIntegral $ shiftR dosDate 9
-      utc = UTCTime (fromGregorian (1980 + fromIntegral year) month day) (fromIntegral $ 3600 * hour + 60 * minutes + seconds)
+      utc = UTCTime (fromGregorian (1980 + year) month day) (3600 * hour + 60 * minutes + seconds)
   in floor (utcTimeToPOSIXSeconds utc)
 
 #ifndef _WINDOWS
