@@ -1,3 +1,7 @@
+zip-archive 0.3.2.6
+
+  * Remove dependency on old-time (typedrat).
+
 zip-archive 0.3.2.5
 
   * Move 'build-tools: unzip' from library stanza to test stanza.
