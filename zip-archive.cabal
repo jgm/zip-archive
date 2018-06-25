@@ -24,21 +24,24 @@ Source-repository    head
   type:              git
   location:          git://github.com/jgm/zip-archive.git
 
-flag splitBase
-  Description:       Choose the new, smaller, split-up base package.
-  Default:           True
 flag executable
   Description:       Build the Zip executable.
   Default:           False
 
 Library
-  if flag(splitBase)
-    Build-depends:   base >= 3 && < 5, pretty, containers
-  else
-    Build-depends:   base < 3
-  Build-depends:     binary >= 0.6, zlib, filepath, bytestring >= 0.10.0,
-                     array, mtl, text >= 0.11, digest >= 0.0.0.1,
-                     directory >= 1.2.0, time
+  Build-depends:     base >= 3 && < 5,
+                     pretty,
+                     containers,
+                     binary >= 0.6,
+                     zlib,
+                     filepath,
+                     bytestring >= 0.10.0,
+                     array,
+                     mtl,
+                     text >= 0.11,
+                     digest >= 0.0.0.1,
+                     directory >= 1.2.0,
+                     time
   Exposed-modules:   Codec.Archive.Zip
   Default-Language:  Haskell98
   Hs-Source-Dirs:    src
