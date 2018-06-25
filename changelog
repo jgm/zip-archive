@@ -1,6 +1,7 @@
-zip-archive 0.3.2.6
+zip-archive 0.3.3
 
   * Remove dependency on old-time (typedrat).
+  * Drop splitBase flag and support for base versions < 3.
 
 zip-archive 0.3.2.5
 
