@@ -37,7 +37,7 @@ Library
   else
     Build-depends:   base < 3
   Build-depends:     binary >= 0.6, zlib, filepath, bytestring >= 0.10.0,
-                     array, mtl, text >= 0.11, old-time, digest >= 0.0.0.1,
+                     array, mtl, text >= 0.11, digest >= 0.0.0.1,
                      directory >= 1.2.0, time
   Exposed-modules:   Codec.Archive.Zip
   Default-Language:  Haskell98
@@ -58,7 +58,9 @@ Executable zip-archive
     Buildable:       False
   Main-is:           Main.hs
   Hs-Source-Dirs:    .
-  Build-Depends:     base >= 4.2 && < 5, directory >= 1.1, bytestring >= 0.9.0,
+  Build-Depends:     base >= 4.2 && < 5,
+                     directory >= 1.1,
+                     bytestring >= 0.9.0,
                      zip-archive
   Other-Modules:     Paths_zip_archive
   Ghc-Options:       -Wall
@@ -69,7 +71,7 @@ Test-Suite test-zip-archive
   Main-Is:        test-zip-archive.hs
   Hs-Source-Dirs: tests
   Build-Depends:  base >= 4.2 && < 5,
-                  directory >= 1.3, bytestring >= 0.9.0, process, time, old-time, 
+                  directory >= 1.3, bytestring >= 0.9.0, process, time,
                   HUnit, zip-archive, temporary, filepath
   Default-Language:  Haskell98
   Ghc-Options:    -Wall
