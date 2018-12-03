@@ -6,8 +6,7 @@
 import Codec.Archive.Zip
 import Control.Applicative
 import Control.Monad (unless)
-import Control.Exception (try, SomeException)
-import Data.List (isInfixOf)
+import Control.Exception (try)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -67,8 +66,9 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testDeleteEntries
                                 , testExtractFiles
                                 , testExtractFilesFailOnEncrypted
-                                , const testPasswordProtectedRead
-                                , const testIncorrectPasswordRead
+                                , testPasswordProtectedRead
+                                , testIncorrectPasswordRead
+                                , testEvilPath
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
@@ -154,6 +154,14 @@ testDeleteEntries _tmpDir = TestCase $ do
   let archive3 = deleteEntryFromArchive "src" archive2
   assertEqual "for deleteFilesFromArchive" emptyArchive archive3
 
+testEvilPath :: FilePath -> Test
+testEvilPath _tmpDir = TestCase $ do
+  archive <- toArchive <$> BL.readFile "tests/zip_with_evil_path.zip"
+  result <- try $ extractFilesFromArchive [] archive :: IO (Either ZipException ())
+  case result of
+    Left err -> assertBool "Wrong exception" $ err == UnsafePath "../evil"
+    Right _ -> assertFailure "extractFilesFromArchive should have failed"
+
 testExtractFiles :: FilePath -> Test
 testExtractFiles tmpDir = TestCase $ do
   createDirectory (tmpDir </> "dir1")
@@ -176,16 +184,15 @@ testExtractFilesFailOnEncrypted tmpDir = TestCase $ do
   createDirectory dir
 
   archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
-  result <- try $ extractFilesFromArchive [OptDestination dir] archive :: IO (Either SomeException ())
+  result <- try $ extractFilesFromArchive [OptDestination dir] archive :: IO (Either ZipException ())
   removeDirectoryRecursive dir
 
   case result of
-    Left err -> assertBool "Non-informative exception" $
-                    show err == show (CannotWriteEncryptedEntry "test.txt")
+    Left err -> assertBool "Wrong exception" $ err == CannotWriteEncryptedEntry "test.txt"
     Right _ -> assertFailure "extractFilesFromArchive should have failed"
 
-testPasswordProtectedRead :: Test
-testPasswordProtectedRead = TestCase $ do
+testPasswordProtectedRead :: FilePath -> Test
+testPasswordProtectedRead _tmpDir = TestCase $ do
   archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
 
   assertEqual "for results of filesInArchive" ["test.txt"] (filesInArchive archive)
@@ -197,8 +204,8 @@ testPasswordProtectedRead = TestCase $ do
             assertEqual "for contents of test.txt in archive"
               (Just $ BLC.pack "SUCCESS\n") (fromEncryptedEntry "s3cr3t" f)
 
-testIncorrectPasswordRead :: Test
-testIncorrectPasswordRead = TestCase $ do
+testIncorrectPasswordRead :: FilePath -> Test
+testIncorrectPasswordRead _tmpDir = TestCase $ do
   archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
   case findEntryByPath "test.txt" archive of
        Nothing  -> assertFailure "test.txt not found in archive"

@@ -77,7 +77,7 @@ import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.List ( nub, find, intercalate, partition)
+import Data.List (nub, find, intercalate, partition, isPrefixOf, isInfixOf)
 import Data.Data (Data)
 import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
@@ -85,7 +85,8 @@ import Text.Printf
 import System.FilePath
 import System.Directory
        (doesDirectoryExist, getDirectoryContents,
-        createDirectoryIfMissing, getModificationTime)
+        createDirectoryIfMissing, getModificationTime, getCurrentDirectory,
+        makeAbsolute)
 import Control.Monad ( when, unless, zipWithM_ )
 import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
@@ -188,7 +189,7 @@ data ZipException =
     CRC32Mismatch FilePath
   | UnsafePath FilePath
   | CannotWriteEncryptedEntry FilePath
-  deriving (Show, Typeable, Data)
+  deriving (Show, Typeable, Data, Eq)
 
 instance E.Exception ZipException
 
@@ -358,6 +359,11 @@ writeEntry opts entry = do
   let path = case [d | OptDestination d <- opts] of
                   (x:_) -> x </> eRelativePath entry
                   _     -> eRelativePath entry
+  absPath <- makeAbsolute path
+  curDir <- getCurrentDirectory
+  let isUnsafePath = ".." `isInfixOf` absPath ||
+                     not (curDir `isPrefixOf` absPath)
+  when isUnsafePath $ E.throwIO $ UnsafePath path
   -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
