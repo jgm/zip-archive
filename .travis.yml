@@ -128,7 +128,8 @@ script:
     cabal)
       cabal sdist --output-directory=sourcedist && \
       cd sourcedist && \
-      cabal install --enable-tests --enable-benchmarks -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
+      cabal update && \
+      cabal install --enable-tests --enable-benchmarks --disable-optimization -v2 -ffast -fexecutable --ghc-options="$OPTS" && \
       cabal test
       ;;
   esac
