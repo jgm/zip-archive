@@ -184,7 +184,8 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
                deriving (Read, Show, Eq)
 
 data ZipException =
-  CRC32Mismatch FilePath
+    CRC32Mismatch FilePath
+  | UnsafePath FilePath
   deriving (Show, Typeable, Data)
 
 instance E.Exception ZipException
