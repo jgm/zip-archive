@@ -1,3 +1,37 @@
+zip-archive 0.4
+
+  * Implement read-only support for PKWARE encryption (Sergii Rudchenko).
+    The "traditional" PKWARE encryption is a symmetric encryption
+    algorithm described in zip format specification in section 6.1.
+    This change allows to extract basic "password-protected" entries from
+    ZIP files.  Note that the standard file extraction function
+    extractFilesFromArchive does not decrypt entries (it will raise
+    an exception if it encounters an encrypted entry). To handle
+    archives with encrypted entries, use the new function
+    fromEncryptedEntry.
+
+    API changes:
+
+    + Add eEncryptionMethod field to Entry.
+    + Add EncryptionMethod type.
+    + Add function isEncryptedEntry.
+    + Add function fromEncryptedEntry.
+    * Add CannotWriteEncryptedEntry constructor to ZipException.
+
+  * Add UnsafePath to ZipException (#50).
+  * writeEntry: raise UnsafePath exception for unsafe paths (#50).
+    This prevents malicious zip files from overwriting paths
+    above the working directory.
+  * Add Paths_zip_archive to autogen-modules.
+  * Clarify README and cabal description.
+  * Specify cabal-version: 2.0.  Otherwise we get an unknown build
+    tool error using `build-depends` without a custom Setup.hs.
+  * Change build-type to simple.  Retain 'build-tools: unzip' in
+    test stanza, though now it doesn't do anything except give a
+    hint to external tools.  If unzip is not found in the path,
+    the test suite prints a message and counts the test that
+    requires unzip as succeeding (see #51).
+
 zip-archive 0.3.3
 
   * Remove dependency on old-time (typedrat).
