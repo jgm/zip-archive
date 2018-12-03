@@ -6,3 +6,5 @@ flags:
   zip-archive:
     executable: false
 extra-package-dbs: []
+ghc-options:
+   "$locals": -fhide-source-paths -Wall
