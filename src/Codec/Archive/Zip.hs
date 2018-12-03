@@ -77,9 +77,12 @@ import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.List (nub, find, intercalate, partition, isPrefixOf, isInfixOf)
-import Data.Data (Data)
+import Data.List (nub, find, intercalate, isPrefixOf, isInfixOf)
+#ifndef _WINDOWS
+import Data.List (partition)
 import Data.Maybe (fromJust)
+#endif
+import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
@@ -103,7 +106,7 @@ import System.Posix.Types ( CMode(..) )
 -- from bytestring
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as B
-import qualified Data.ByteString.Lazy.Char8 as C (pack, unpack)
+import qualified Data.ByteString.Lazy.Char8 as C
 
 -- text
 import qualified Data.Text.Lazy as TL
@@ -111,13 +114,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
-
-versionMadeBy :: Word16
-#ifdef _WINDOWS
-versionMadeBy = 0x0000 -- FAT/VFAT/VFAT32 file attributes
-#else
-versionMadeBy = 0x0300 -- UNIX file attributes
-#endif
 
 #if !MIN_VERSION_binary(0, 6, 0)
 manySig :: Word32 -> Get a -> Get [a]
@@ -328,7 +324,7 @@ readEntry opts path = do
 
   entryE <-
 #ifdef _WINDOWS
-        return $ entry
+        return $ entry { eVersionMadeBy = 0x0000 } -- FAT/VFAT/VFAT32 file attributes
 #else
         do
            let fm = if isSymLink
@@ -337,7 +333,7 @@ readEntry opts path = do
 
            let modes = fromIntegral $ shiftL (toInteger fm) 16
            return $ entry { eExternalFileAttributes = modes,
-                            eVersionMadeBy = versionMadeBy }
+                            eVersionMadeBy = 0x0300 } -- UNIX file attributes
 #endif
 
   when (OptVerbose `elem` opts) $ do
@@ -609,10 +605,10 @@ getDirectoryContentsRecursivelyBy exploreMethod path = do
 
 
 setFileTimeStamp :: FilePath -> Integer -> IO ()
-setFileTimeStamp file epochtime = do
 #ifdef _WINDOWS
-  return ()  -- TODO - figure out how to set the timestamp on Windows
+setFileTimeStamp _ _ = return () -- TODO: figure out how to set the timestamp on Windows
 #else
+setFileTimeStamp file epochtime = do
   let epochtime' = fromInteger epochtime
   setFileTimes file epochtime' epochtime'
 #endif
