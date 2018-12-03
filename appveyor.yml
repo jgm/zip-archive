@@ -34,7 +34,7 @@ install:
 test_script:
   # Note: this forces creation of cabal store, because of a cabal bug:
   # see https://github.com/haskell/cabal/issues/5516
-  - echo "" | cabal new-repl -w ghc-%GHC_MINOR_VERSION% --build-dep fail
+  - echo "" | cabal new-repl -w ghc-%GHC_VERSION% --build-dep fail
   - cabal --store-dir="%CABAL_STORE%" --version
   - cabal --store-dir="%CABAL_STORE%" new-update
   - cabal --store-dir="%CABAL_STORE%" new-configure -w %GHC% --enable-tests %CABAL_OPTS% --ghc-options="%GHC_OPTS%"
