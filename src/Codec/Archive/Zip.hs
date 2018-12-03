@@ -83,10 +83,11 @@ import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
-import System.Directory ( doesDirectoryExist, getDirectoryContents, createDirectoryIfMissing )
-import Control.Monad ( when, unless, zipWithM )
+import System.Directory
+       (doesDirectoryExist, getDirectoryContents,
+        createDirectoryIfMissing, getModificationTime)
+import Control.Monad ( when, unless, zipWithM_ )
 import qualified Control.Exception as E
-import System.Directory ( getModificationTime )
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
@@ -222,7 +223,7 @@ fromArchive = encode
 
 -- | Returns a list of files in a zip archive.
 filesInArchive :: Archive -> [FilePath]
-filesInArchive = (map eRelativePath) . zEntries
+filesInArchive = map eRelativePath . zEntries
 
 -- | Adds an entry to a zip archive, or updates an existing entry.
 addEntryToArchive :: Entry -> Archive -> Archive
@@ -321,8 +322,7 @@ readEntry opts path = do
                         return B.empty
                       else
                         B.fromStrict <$> S.readFile path
-  modEpochTime <- fmap (floor . utcTimeToPOSIXSeconds)
-                   $ getModificationTime path
+  modEpochTime <- (floor . utcTimeToPOSIXSeconds) <$> getModificationTime path
   let entry = toEntry path' modEpochTime contents
 
   entryE <-
@@ -365,10 +365,10 @@ writeEntry opts entry = do
     createDirectoryIfMissing True dir
     when (OptVerbose `elem` opts) $
       hPutStrLn stderr $ "  creating: " ++ dir
-  if length path > 0 && last path == '/' -- path is a directory
+  if not (null path) && last path == '/' -- path is a directory
      then return ()
      else do
-       when (OptVerbose `elem` opts) $ do
+       when (OptVerbose `elem` opts) $
          hPutStrLn stderr $ case eCompressionMethod entry of
                                  Deflate       -> " inflating: " ++ path
                                  NoCompression -> "extracting: " ++ path
@@ -391,11 +391,11 @@ writeEntry opts entry = do
 -- the options do not contain 'OptPreserveSymbolicLinks`, this
 -- function behaves like `writeEntry`.
 writeSymbolicLinkEntry :: [ZipOption] -> Entry -> IO ()
-writeSymbolicLinkEntry opts entry = do
+writeSymbolicLinkEntry opts entry =
   if OptPreserveSymbolicLinks `notElem` opts
      then writeEntry opts entry
      else do
-        if (isEntrySymbolicLink entry)
+        if isEntrySymbolicLink entry
            then do
              let prefixPath = case [d | OptDestination d <- opts] of
                                    (x:_) -> x
@@ -433,7 +433,7 @@ addFilesToArchive opts archive files = do
 #ifdef _WINDOWS
                          then mapM getDirectoryContentsRecursive files >>= return . nub . concat
 #else
-                         then mapM (getDirectoryContentsRecursive' opts) files >>= return . nub . concat
+                         then nub . concat <$> mapM (getDirectoryContentsRecursive' opts) files
 #endif
                          else return files
   entries <- mapM (readEntry opts) filesAndChildren
@@ -453,8 +453,8 @@ extractFilesFromArchive opts archive = do
       mapM_ (writeEntry opts) entries
 #else
       let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink entries
-      mapM_ (writeEntry opts) $ nonSymbolicLinkEntries
-      mapM_ (writeSymbolicLinkEntry opts) $ symbolicLinkEntries
+      mapM_ (writeEntry opts) nonSymbolicLinkEntries
+      mapM_ (writeSymbolicLinkEntry opts) symbolicLinkEntries
 #endif
     else mapM_ (writeEntry opts) entries
 
@@ -512,10 +512,10 @@ pkwareDecryptByte keys@(_, _, key2) inB =
 -- | Update decryption keys after a decrypted byte
 pkwareUpdateKeys :: DecryptionCtx -> Word8 -> DecryptionCtx
 pkwareUpdateKeys (key0, key1, key2) inB =
-  let key0' = (CRC32.crc32Update (key0 `xor` 0xffffffff) [inB]) `xor` 0xffffffff
+  let key0' = CRC32.crc32Update (key0 `xor` 0xffffffff) [inB] `xor` 0xffffffff
       key1' = (key1 + (key0' .&. 0xff)) * 134775813 + 1
       key1Byte = fromIntegral (key1' `shiftR` 24) :: Word8
-      key2' = (CRC32.crc32Update (key2 `xor` 0xffffffff) [key1Byte]) `xor` 0xffffffff
+      key2' = CRC32.crc32Update (key2 `xor` 0xffffffff) [key1Byte] `xor` 0xffffffff
   in (key0', key1', key2')
 
 -- | Calculate compression ratio for an entry (for verbose output).
@@ -547,10 +547,10 @@ epochTimeToMSDOSDateTime epochtime | epochtime < minMSDOSDateTime =
   epochTimeToMSDOSDateTime minMSDOSDateTime
   -- if time is earlier than minimum DOS datetime, return minimum
 epochTimeToMSDOSDateTime epochtime =
-  let 
+  let
     UTCTime
       (toGregorian -> (fromInteger -> year, month, day))
-      (timeToTimeOfDay -> (TimeOfDay hour minutes (floor -> sec))) 
+      (timeToTimeOfDay -> (TimeOfDay hour minutes (floor -> sec)))
       = posixSecondsToUTCTime (fromIntegral epochtime)
 
     dosTime = toEnum $ (sec `div` 2) + shiftL minutes 5 + shiftL hour 11
@@ -559,19 +559,19 @@ epochTimeToMSDOSDateTime epochtime =
 
 -- | Convert a MSDOS datetime to a 'ClockTime'.
 msDOSDateTimeToEpochTime :: MSDOSDateTime -> Integer
-msDOSDateTimeToEpochTime (MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTime}) =
+msDOSDateTimeToEpochTime MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTime} =
   let seconds = fromIntegral $ 2 * (dosTime .&. 0O37)
-      minutes = fromIntegral $ (shiftR dosTime 5) .&. 0O77
+      minutes = fromIntegral $ shiftR dosTime 5 .&. 0O77
       hour    = fromIntegral $ shiftR dosTime 11
       day     = fromIntegral $ dosDate .&. 0O37
-      month   = fromIntegral $ ((shiftR dosDate 5) .&. 0O17)
+      month   = fromIntegral ((shiftR dosDate 5) .&. 0O17)
       year    = fromIntegral $ shiftR dosDate 9
       utc = UTCTime (fromGregorian (1980 + year) month day) (3600 * hour + 60 * minutes + seconds)
   in floor (utcTimeToPOSIXSeconds utc)
 
 #ifndef _WINDOWS
 getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
-getDirectoryContentsRecursive' opts path = do
+getDirectoryContentsRecursive' opts path =
   if OptPreserveSymbolicLinks `elem` opts
      then do
        isDir <- doesDirectoryExist path
@@ -680,7 +680,7 @@ getArchive = do
   skip 4 -- offset of central directory
   commentLength <- getWord16le
   zipComment <- getLazyByteString (toEnum $ fromEnum commentLength)
-  return $ Archive
+  return Archive
            { zEntries                = files
            , zSignature              = digSig
            , zComment                = zipComment
@@ -692,7 +692,7 @@ putArchive archive = do
   let localFileSizes = map localFileSize $ zEntries archive
   let offsets = scanl (+) 0 localFileSizes
   let cdOffset = last offsets
-  _ <- zipWithM putFileHeader offsets (zEntries archive)
+  _ <- zipWithM_ putFileHeader offsets (zEntries archive)
   putDigitalSignature $ zSignature archive
   putWord32le 0x06054b50
   putWord16le 0 -- disk number
@@ -770,7 +770,7 @@ getLocalFile = do
               cs <- getWord32le  -- compressed size
               skip 4 -- uncompressed size
               if fromIntegral cs == B.length raw
-                 then return $ raw
+                 then return raw
                  else fail "Content size mismatch in data descriptor record"
   return (fromIntegral offset, compressedData)
 
@@ -916,11 +916,11 @@ getFileHeader locals = do
   fileName <- getLazyByteString (toEnum $ fromEnum fileNameLength)
   extraField <- getLazyByteString (toEnum $ fromEnum extraFieldLength)
   fileComment <- getLazyByteString (toEnum $ fromEnum fileCommentLength)
-  compressedData <- case (M.lookup relativeOffset locals) of
+  compressedData <- case M.lookup relativeOffset locals of
                     Just x  -> return x
                     Nothing -> fail $ "Unable to find data at offset " ++
                                         show relativeOffset
-  return $ Entry
+  return Entry
             { eRelativePath            = toString fileName
             , eCompressionMethod       = compressionMethod
             , eEncryptionMethod        = encryptionMethod
