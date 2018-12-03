@@ -78,10 +78,6 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
 import Data.List (nub, find, intercalate, isPrefixOf, isInfixOf)
-#ifndef _WINDOWS
-import Data.List (partition)
-import Data.Maybe (fromJust)
-#endif
 import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Text.Printf
@@ -101,6 +97,8 @@ import Control.Applicative
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink )
 import System.Posix.Types ( CMode(..) )
+import Data.List (partition)
+import Data.Maybe (fromJust)
 #endif
 
 -- from bytestring
