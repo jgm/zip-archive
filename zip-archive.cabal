@@ -86,6 +86,7 @@ Executable zip-archive
                      bytestring >= 0.9.0,
                      zip-archive
   Other-Modules:     Paths_zip_archive
+  Autogen-Modules:   Paths_zip_archive
   Ghc-Options:       -Wall
   Default-Language:  Haskell98
 
