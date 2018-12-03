@@ -5,12 +5,14 @@
 
 import Codec.Archive.Zip
 import Control.Applicative
+import Control.Monad (unless)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import System.Exit
+import System.IO.Error
 import System.IO.Temp (withTempDirectory)
 
 #ifndef _WINDOWS
@@ -48,7 +50,14 @@ createTestDirectoryWithSymlinks prefixDir  baseDir = do
 
 main :: IO Counts
 main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
-  res   <- runTestTT $ TestList $ map (\f -> f tmpDir)
+#ifndef _WINDOWS
+  unzipInPath <- catchIOError
+                   (rawSystem "unzip" [] >> return True)
+                   (\_ -> return False)
+  unless unzipInPath $
+    putStrLn "\n\nunzip is not in path; skipping testArchiveAndUnzip\n"
+#endif
+  res   <- runTestTT $ TestList $ map (\f -> f tmpDir) $
                                 [ testReadWriteArchive
                                 , testReadExternalZip
                                 , testFromToArchive
@@ -60,9 +69,11 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
                                 , testExtractExternalZipWithSymlinks
-                                , testArchiveAndUnzip
 #endif
                                 ]
+#ifndef _WINDOWS
+                                ++ [testArchiveAndUnzip | unzipInPath]
+#endif
   exitWith $ case (failures res + errors res) of
                      0 -> ExitSuccess
                      n -> ExitFailure n
