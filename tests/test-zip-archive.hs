@@ -5,6 +5,8 @@
 
 import Codec.Archive.Zip
 import Control.Applicative
+import Control.Exception (try, SomeException)
+import Data.List (isInfixOf)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -57,6 +59,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testAddFilesOptions
                                 , testDeleteEntries
                                 , testExtractFiles
+                                , testExtractFilesFailOnEncrypted
                                 , const testPasswordProtectedRead
                                 , const testIncorrectPasswordRead
 #ifndef _WINDOWS
@@ -157,6 +160,20 @@ testExtractFiles tmpDir = TestCase $ do
   hello <- BS.readFile (tmpDir </> "dir1/dir2/hello")
   assertEqual ("contents of " </> tmpDir </> "dir1/hi") hiMsg hi
   assertEqual ("contents of " </> tmpDir </> "dir1/dir2/hello") helloMsg hello
+
+testExtractFilesFailOnEncrypted :: FilePath -> Test
+testExtractFilesFailOnEncrypted tmpDir = TestCase $ do
+  let dir = tmpDir </> "fail-encrypted"
+  createDirectory dir
+
+  archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
+  result <- try $ extractFilesFromArchive [OptDestination dir] archive :: IO (Either SomeException ())
+  removeDirectoryRecursive dir
+
+  case result of
+    Left err -> assertBool "Non-informative exception" $
+                    ("Archive contains encrypted entries" `isInfixOf` (show err))
+    Right _ -> assertFailure "extractFilesFromArchive should have failed"
 
 testPasswordProtectedRead :: Test
 testPasswordProtectedRead = TestCase $ do

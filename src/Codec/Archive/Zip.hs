@@ -439,18 +439,22 @@ addFilesToArchive opts archive files = do
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
 -- Note that the last-modified time is set correctly only in POSIX,
 -- not in Windows.
+-- This function fails if encrypted entries are present
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = do
+  let entries = zEntries archive
+  when (any isEntryEncrypted entries) $ fail "Archive contains encrypted entries"
+
   if OptPreserveSymbolicLinks `elem` opts
     then do
 #ifdef _WINDOWS
-      mapM_ (writeEntry opts) $ zEntries archive
+      mapM_ (writeEntry opts) entries
 #else
-      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink $ zEntries archive
+      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink entries
       mapM_ (writeEntry opts) $ nonSymbolicLinkEntries
       mapM_ (writeSymbolicLinkEntry opts) $ symbolicLinkEntries
 #endif
-    else mapM_ (writeEntry opts) $ zEntries archive
+    else mapM_ (writeEntry opts) entries
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
