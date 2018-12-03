@@ -12,7 +12,6 @@ import Test.HUnit.Text
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
 import System.Exit
-import System.IO.Error
 import System.IO.Temp (withTempDirectory)
 
 #ifndef _WINDOWS
@@ -51,9 +50,8 @@ createTestDirectoryWithSymlinks prefixDir  baseDir = do
 main :: IO Counts
 main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
 #ifndef _WINDOWS
-  unzipInPath <- catchIOError
-                   (rawSystem "unzip" [] >> return True)
-                   (\_ -> return False)
+  ec <- rawSystem "which" ["unzip"]
+  let unzipInPath = ec == ExitSuccess
   unless unzipInPath $
     putStrLn "\n\nunzip is not in path; skipping testArchiveAndUnzip\n"
 #endif
