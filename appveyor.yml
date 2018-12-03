@@ -4,6 +4,10 @@ environment:
     STACK_ROOT: "c:\\sr"
     STACK_YAML: "c:\\stack\\stack.yaml"
     WIXBIN: "c:\\Program Files (x86)\\WiX Toolset v3.10\\bin"
+    # Override the temp directory to avoid sed escaping issues
+    # See https://github.com/haskell/cabal/issues/5386
+    TMP: "c:\\tmp"
+    # see #4201, https://github.com/haskell-tools/haskell-tools/issues/277
 
 cache:
   - "c:\\sr" # stack root, short paths == fewer problems
