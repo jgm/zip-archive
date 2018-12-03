@@ -181,7 +181,7 @@ testExtractFilesFailOnEncrypted tmpDir = TestCase $ do
 
   case result of
     Left err -> assertBool "Non-informative exception" $
-                    ("Archive contains encrypted entries" `isInfixOf` (show err))
+                    show err == show (CannotWriteEncryptedEntry "test.txt")
     Right _ -> assertFailure "extractFilesFromArchive should have failed"
 
 testPasswordProtectedRead :: Test
@@ -193,7 +193,7 @@ testPasswordProtectedRead = TestCase $ do
        Nothing  -> assertFailure "test.txt not found in archive"
        Just f   -> do
             assertBool "for encrypted test.txt file entry"
-              (isEntryEncrypted f)
+              (isEncryptedEntry f)
             assertEqual "for contents of test.txt in archive"
               (Just $ BLC.pack "SUCCESS\n") (fromEncryptedEntry "s3cr3t" f)
 

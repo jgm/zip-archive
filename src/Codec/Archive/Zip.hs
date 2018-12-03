@@ -50,7 +50,7 @@ module Codec.Archive.Zip
        , findEntryByPath
        , fromEntry
        , fromEncryptedEntry
-       , isEntryEncrypted
+       , isEncryptedEntry
        , toEntry
 #ifndef _WINDOWS
        , isEntrySymbolicLink
@@ -186,6 +186,7 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
 data ZipException =
     CRC32Mismatch FilePath
   | UnsafePath FilePath
+  | CannotWriteEncryptedEntry FilePath
   deriving (Show, Typeable, Data)
 
 instance E.Exception ZipException
@@ -252,8 +253,8 @@ fromEncryptedEntry password entry =
   decompressData (eCompressionMethod entry) <$> decryptData password (eEncryptionMethod entry) (eCompressedData entry)
 
 -- | Check if an 'Entry' is encrypted
-isEntryEncrypted :: Entry -> Bool
-isEntryEncrypted entry =
+isEncryptedEntry :: Entry -> Bool
+isEncryptedEntry entry =
   case eEncryptionMethod entry of
     (PKWAREEncryption _) -> True
     _ -> False
@@ -352,6 +353,8 @@ readEntry opts path = do
 -- does not match the uncompressed data.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
+  when (isEncryptedEntry entry) $
+    E.throwIO $ CannotWriteEncryptedEntry (eRelativePath entry)
   let path = case [d | OptDestination d <- opts] of
                   (x:_) -> x </> eRelativePath entry
                   _     -> eRelativePath entry
@@ -444,8 +447,6 @@ addFilesToArchive opts archive files = do
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = do
   let entries = zEntries archive
-  when (any isEntryEncrypted entries) $ fail "Archive contains encrypted entries"
-
   if OptPreserveSymbolicLinks `elem` opts
     then do
 #ifdef _WINDOWS
