@@ -15,7 +15,7 @@
 -- and extracting files from zip archives.
 --
 -- Certain simplifying assumptions are made about the zip archives: in
--- particular, there is no support for encryption, zip files that span
+-- particular, there is no support for strong encryption, zip files that span
 -- multiple disks, ZIP64, OS-specific file attributes, or compression
 -- methods other than Deflate.  However, the library should be able to
 -- read the most common zip archives, and the archives it produces should
@@ -35,6 +35,7 @@ module Codec.Archive.Zip
          Archive (..)
        , Entry (..)
        , CompressionMethod (..)
+       , EncryptionMethod (..)
        , ZipOption (..)
        , ZipException (..)
        , emptyArchive
@@ -48,6 +49,8 @@ module Codec.Archive.Zip
        , deleteEntryFromArchive
        , findEntryByPath
        , fromEntry
+       , fromEncryptedEntry
+       , isEntryEncrypted
        , toEntry
 #ifndef _WINDOWS
        , isEntrySymbolicLink
@@ -70,7 +73,7 @@ import Data.Time.Calendar ( toGregorian, fromGregorian )
 import Data.Time.Clock ( UTCTime(..) )
 import Data.Time.Clock.POSIX ( posixSecondsToUTCTime, utcTimeToPOSIXSeconds )
 import Data.Time.LocalTime ( TimeOfDay(..), timeToTimeOfDay )
-import Data.Bits ( shiftL, shiftR, (.&.) )
+import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
@@ -145,6 +148,7 @@ instance Binary Archive where
 data Entry = Entry
                { eRelativePath            :: FilePath            -- ^ Relative path, using '/' as separator
                , eCompressionMethod       :: CompressionMethod   -- ^ Compression method
+               , eEncryptionMethod        :: EncryptionMethod    -- ^ Encryption method
                , eLastModified            :: Integer             -- ^ Modification time (seconds since unix epoch)
                , eCRC32                   :: Word32              -- ^ CRC32 checksum
                , eCompressedSize          :: Word32              -- ^ Compressed size in bytes
@@ -161,6 +165,15 @@ data Entry = Entry
 data CompressionMethod = Deflate
                        | NoCompression
                        deriving (Read, Show, Eq)
+
+data EncryptionMethod = NoEncryption            -- ^ Entry is not encrypted
+                      | PKWAREEncryption Word8  -- ^ Entry is encrypted with the traditional PKWARE encryption
+                      deriving (Read, Show, Eq)
+
+-- | The way the password should be verified during entry decryption
+data PKWAREVerificationType = CheckTimeByte
+                            | CheckCRCByte
+                            deriving (Read, Show, Eq)
 
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
@@ -232,6 +245,18 @@ fromEntry :: Entry -> B.ByteString
 fromEntry entry =
   decompressData (eCompressionMethod entry) (eCompressedData entry)
 
+-- | Returns decrypted and uncompressed contents of zip entry.
+fromEncryptedEntry :: String -> Entry -> Maybe B.ByteString
+fromEncryptedEntry password entry =
+  decompressData (eCompressionMethod entry) <$> decryptData password (eEncryptionMethod entry) (eCompressedData entry)
+
+-- | Check if an 'Entry' is encrypted
+isEntryEncrypted :: Entry -> Bool
+isEntryEncrypted entry =
+  case eEncryptionMethod entry of
+    (PKWAREEncryption _) -> True
+    _ -> False
+
 -- | Create an 'Entry' with specified file path, modification time, and contents.
 toEntry :: FilePath         -- ^ File path for entry
         -> Integer          -- ^ Modification time for entry (seconds since unix epoch)
@@ -249,6 +274,7 @@ toEntry path modtime contents =
       crc32 = CRC32.crc32 contents
   in  Entry { eRelativePath            = normalizePath path
             , eCompressionMethod       = compressionMethod
+            , eEncryptionMethod        = NoEncryption
             , eLastModified            = modtime
             , eCRC32                   = crc32
             , eCompressedSize          = fromIntegral finalSize
@@ -413,18 +439,22 @@ addFilesToArchive opts archive files = do
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
 -- Note that the last-modified time is set correctly only in POSIX,
 -- not in Windows.
+-- This function fails if encrypted entries are present
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = do
+  let entries = zEntries archive
+  when (any isEntryEncrypted entries) $ fail "Archive contains encrypted entries"
+
   if OptPreserveSymbolicLinks `elem` opts
     then do
 #ifdef _WINDOWS
-      mapM_ (writeEntry opts) $ zEntries archive
+      mapM_ (writeEntry opts) entries
 #else
-      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink $ zEntries archive
+      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink entries
       mapM_ (writeEntry opts) $ nonSymbolicLinkEntries
       mapM_ (writeSymbolicLinkEntry opts) $ symbolicLinkEntries
 #endif
-    else mapM_ (writeEntry opts) $ zEntries archive
+    else mapM_ (writeEntry opts) entries
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
@@ -452,6 +482,39 @@ compressData NoCompression = id
 decompressData :: CompressionMethod -> B.ByteString -> B.ByteString
 decompressData Deflate       = Zlib.decompress
 decompressData NoCompression = id
+
+-- | Decrypt a lazy bytestring
+-- Returns Nothing if password is incorrect
+decryptData :: String -> EncryptionMethod -> B.ByteString -> Maybe B.ByteString
+decryptData _ NoEncryption s = Just s
+decryptData password (PKWAREEncryption controlByte) s =
+  let headerlen = 12
+      initKeys = (305419896, 591751049, 878082192)
+      startKeys = B.foldl pkwareUpdateKeys initKeys (C.pack password)
+      (header, content) = B.splitAt headerlen $ snd $ B.mapAccumL pkwareDecryptByte startKeys s
+  in if B.last header == controlByte
+        then Just content
+        else Nothing
+
+-- | PKWARE decryption context
+type DecryptionCtx = (Word32, Word32, Word32)
+
+-- | An interation of the PKWARE decryption algorithm
+pkwareDecryptByte :: DecryptionCtx -> Word8 -> (DecryptionCtx, Word8)
+pkwareDecryptByte keys@(_, _, key2) inB =
+  let tmp = key2 .|. 2
+      tmp' = fromIntegral ((tmp * (tmp `xor` 1)) `shiftR` 8) :: Word8
+      outB = inB `xor` tmp'
+  in (pkwareUpdateKeys keys outB, outB)
+
+-- | Update decryption keys after a decrypted byte
+pkwareUpdateKeys :: DecryptionCtx -> Word8 -> DecryptionCtx
+pkwareUpdateKeys (key0, key1, key2) inB =
+  let key0' = (CRC32.crc32Update (key0 `xor` 0xffffffff) [inB]) `xor` 0xffffffff
+      key1' = (key1 + (key0' .&. 0xff)) * 134775813 + 1
+      key1Byte = fromIntegral (key1' `shiftR` 24) :: Word8
+      key2' = (CRC32.crc32Update (key2 `xor` 0xffffffff) [key1Byte]) `xor` 0xffffffff
+  in (key0', key1', key2')
 
 -- | Calculate compression ratio for an entry (for verbose output).
 compressionRatio :: Entry -> Float
@@ -824,7 +887,7 @@ getFileHeader locals = do
   skip 1 -- upper byte indicates OS part of "version needed to extract"
   unless (versionNeededToExtract <= 20) $
     fail "This archive requires zip >= 2.0 to extract."
-  skip 2 -- general purpose bit flag
+  bitflag <- getWord16le
   rawCompressionMethod <- getWord16le
   compressionMethod <- case rawCompressionMethod of
                         0 -> return NoCompression
@@ -833,6 +896,12 @@ getFileHeader locals = do
   lastModFileTime <- getWord16le
   lastModFileDate <- getWord16le
   crc32 <- getWord32le
+  encryptionMethod <- case (testBit bitflag 0, testBit bitflag 3, testBit bitflag 6) of
+                        (False, _, _) -> return NoEncryption
+                        (True, False, False) -> return $ PKWAREEncryption (fromIntegral (crc32 `shiftR` 24))
+                        (True, True, False) -> return $ PKWAREEncryption (fromIntegral (lastModFileTime `shiftR` 8))
+                        (True, _, True) -> fail "Strong encryption is not supported"
+
   compressedSize <- getWord32le
   uncompressedSize <- getWord32le
   fileNameLength <- getWord16le
@@ -852,6 +921,7 @@ getFileHeader locals = do
   return $ Entry
             { eRelativePath            = toString fileName
             , eCompressionMethod       = compressionMethod
+            , eEncryptionMethod        = encryptionMethod
             , eLastModified            = msDOSDateTimeToEpochTime $
                                          MSDOSDateTime { msDOSDate = lastModFileDate,
                                                          msDOSTime = lastModFileTime }

@@ -6,11 +6,14 @@
 import Codec.Archive.Zip
 import Control.Applicative
 import Control.Monad (unless)
+import Control.Exception (try, SomeException)
+import Data.List (isInfixOf)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BLC
 import System.Exit
 import System.IO.Temp (withTempDirectory)
 
@@ -63,6 +66,9 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testAddFilesOptions
                                 , testDeleteEntries
                                 , testExtractFiles
+                                , testExtractFilesFailOnEncrypted
+                                , const testPasswordProtectedRead
+                                , const testIncorrectPasswordRead
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
@@ -94,7 +100,10 @@ testReadExternalZip _tmpDir = TestCase $ do
   bContents <- BL.readFile "tests/test4/b.bin"
   case findEntryByPath "test4/b.bin" archive of
        Nothing  -> assertFailure "test4/b.bin not found in archive"
-       Just f   -> assertEqual "for contents of test4/b.bin in archive"
+       Just f   -> do
+                    assertEqual "for text4/b.bin file entry"
+                      NoEncryption (eEncryptionMethod f)
+                    assertEqual "for contents of test4/b.bin in archive"
                       bContents (fromEntry f)
   case findEntryByPath "test4/" archive of
        Nothing  -> assertFailure "test4/ not found in archive"
@@ -160,6 +169,42 @@ testExtractFiles tmpDir = TestCase $ do
   hello <- BS.readFile (tmpDir </> "dir1/dir2/hello")
   assertEqual ("contents of " </> tmpDir </> "dir1/hi") hiMsg hi
   assertEqual ("contents of " </> tmpDir </> "dir1/dir2/hello") helloMsg hello
+
+testExtractFilesFailOnEncrypted :: FilePath -> Test
+testExtractFilesFailOnEncrypted tmpDir = TestCase $ do
+  let dir = tmpDir </> "fail-encrypted"
+  createDirectory dir
+
+  archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
+  result <- try $ extractFilesFromArchive [OptDestination dir] archive :: IO (Either SomeException ())
+  removeDirectoryRecursive dir
+
+  case result of
+    Left err -> assertBool "Non-informative exception" $
+                    ("Archive contains encrypted entries" `isInfixOf` (show err))
+    Right _ -> assertFailure "extractFilesFromArchive should have failed"
+
+testPasswordProtectedRead :: Test
+testPasswordProtectedRead = TestCase $ do
+  archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
+
+  assertEqual "for results of filesInArchive" ["test.txt"] (filesInArchive archive)
+  case findEntryByPath "test.txt" archive of
+       Nothing  -> assertFailure "test.txt not found in archive"
+       Just f   -> do
+            assertBool "for encrypted test.txt file entry"
+              (isEntryEncrypted f)
+            assertEqual "for contents of test.txt in archive"
+              (Just $ BLC.pack "SUCCESS\n") (fromEncryptedEntry "s3cr3t" f)
+
+testIncorrectPasswordRead :: Test
+testIncorrectPasswordRead = TestCase $ do
+  archive <- toArchive <$> BL.readFile "tests/zip_with_password.zip"
+  case findEntryByPath "test.txt" archive of
+       Nothing  -> assertFailure "test.txt not found in archive"
+       Just f   -> do
+            assertEqual "for contents of test.txt in archive"
+              Nothing (fromEncryptedEntry "INCORRECT" f)
 
 #ifndef _WINDOWS
 
