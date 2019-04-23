@@ -1,3 +1,13 @@
+zip-archive 0.4.1
+
+  * writEntry behavior change: Improve raising of UnsafePath error (#55).
+    Previously we raised this error spuriously when archives were unpacked
+    outside the working directory.  Now we raise it if eRelativePath contains
+    ".." as a path component, or eRelativePath path is an absolute path and
+    there is no separate destination directory.  (Note that `/foo/bar` is fine
+    as a path as long as a destination directory, e.g. `/usr/local`, is
+    specified.)
+
 zip-archive 0.4
 
   * Implement read-only support for PKWARE encryption (Sergii Rudchenko).
