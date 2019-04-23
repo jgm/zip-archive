@@ -77,15 +77,14 @@ import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.List (nub, find, intercalate, isPrefixOf, isInfixOf)
+import Data.List (nub, find, intercalate)
 import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
 import System.Directory
        (doesDirectoryExist, getDirectoryContents,
-        createDirectoryIfMissing, getModificationTime, getCurrentDirectory,
-        makeAbsolute)
+        createDirectoryIfMissing, getModificationTime)
 import Control.Monad ( when, unless, zipWithM_ )
 import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
@@ -350,14 +349,16 @@ writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   when (isEncryptedEntry entry) $
     E.throwIO $ CannotWriteEncryptedEntry (eRelativePath entry)
-  let path = case [d | OptDestination d <- opts] of
-                  (x:_) -> x </> eRelativePath entry
-                  _     -> eRelativePath entry
-  absPath <- makeAbsolute path
-  curDir <- getCurrentDirectory
-  let isUnsafePath = ".." `isInfixOf` absPath ||
-                     not (curDir `isPrefixOf` absPath)
-  when isUnsafePath $ E.throwIO $ UnsafePath path
+  let relpath = eRelativePath entry
+  let isUnsafePath = ".." `elem` splitDirectories relpath
+  when isUnsafePath $
+    E.throwIO $ UnsafePath relpath
+  path <- case [d | OptDestination d <- opts] of
+             (x:_) -> return (x </> relpath)
+             _ | isAbsolute relpath
+                   -> E.throwIO $ UnsafePath relpath
+               | otherwise
+                   -> return relpath
   -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
