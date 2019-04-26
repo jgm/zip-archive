@@ -342,6 +342,26 @@ readEntry opts path = do
       compmethod (100 - (100 * compressionRatio entryE))
   return entryE
 
+-- check path, resolving .. and . components, raising
+-- UnsafePath exception if this takes you outside of the root.
+checkPath :: FilePath -> IO ()
+checkPath fp =
+  maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
+    (resolve . splitDirectories $ fp)
+  where
+    resolve :: Monad m => [String] -> m [String]
+    resolve =
+      fmap reverse . foldl go (return [])
+      where
+      go acc x = do
+        xs <- acc
+        case x of
+          "."  -> return xs
+          ".." -> case xs of
+                    []     -> fail "outside of root path"
+                    (_:ys) -> return ys
+          _    -> return (x:xs)
+
 -- | Writes contents of an 'Entry' to a file.  Throws a
 -- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
 -- does not match the uncompressed data.
@@ -350,15 +370,11 @@ writeEntry opts entry = do
   when (isEncryptedEntry entry) $
     E.throwIO $ CannotWriteEncryptedEntry (eRelativePath entry)
   let relpath = eRelativePath entry
-  let isUnsafePath = ".." `elem` splitDirectories relpath
-  when isUnsafePath $
-    E.throwIO $ UnsafePath relpath
+  checkPath relpath
   path <- case [d | OptDestination d <- opts] of
-             (x:_) -> return (x </> relpath)
-             _ | isAbsolute relpath
-                   -> E.throwIO $ UnsafePath relpath
-               | otherwise
-                   -> return relpath
+             (x:_)                   -> return (x </> relpath)
+             [] | isAbsolute relpath -> E.throwIO $ UnsafePath relpath
+                | otherwise          -> return relpath
   -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
