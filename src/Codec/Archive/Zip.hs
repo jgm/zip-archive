@@ -335,7 +335,7 @@ readEntry opts path = do
 
   when (OptVerbose `elem` opts) $ do
     let compmethod = case eCompressionMethod entryE of
-                     Deflate       -> "deflated"
+                     Deflate       -> ("deflated" :: String)
                      NoCompression -> "stored"
     hPutStrLn stderr $
       printf "  adding: %s (%s %.f%%)" (eRelativePath entryE)
