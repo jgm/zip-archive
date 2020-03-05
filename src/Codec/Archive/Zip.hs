@@ -90,9 +90,7 @@ import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
-#if MIN_VERSION_binary(0,6,0)
 import Control.Applicative
-#endif
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink )
 import System.Posix.Types ( CMode(..) )
@@ -112,7 +110,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
 
-#if !MIN_VERSION_binary(0, 6, 0)
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
     sig' <- lookAhead getWord32le
@@ -122,7 +119,6 @@ manySig sig p = do
             rs <- manySig sig p
             return $ r : rs
         else return []
-#endif
 
 
 ------------------------------------------------------------------------
@@ -677,15 +673,9 @@ setFileTimeStamp file epochtime = do
 
 getArchive :: Get Archive
 getArchive = do
-#if MIN_VERSION_binary(0,6,0)
-  locals <- many getLocalFile
-  files <- many (getFileHeader (M.fromList locals))
-  digSig <- Just `fmap` getDigitalSignature <|> return Nothing
-#else
   locals <- manySig 0x04034b50 getLocalFile
   files <- manySig 0x02014b50 (getFileHeader (M.fromList locals))
-  digSig <- lookAheadM getDigitalSignature
-#endif
+  digSig <- Just `fmap` getDigitalSignature <|> return Nothing
   endSig <- getWord32le
   unless (endSig == 0x06054b50)
     $ fail "Did not find end of central directory signature"
@@ -792,7 +782,6 @@ getLocalFile = do
   return (fromIntegral offset, compressedData)
 
 getWordsTilSig :: Word32 -> Get B.ByteString
-#if MIN_VERSION_binary(0, 6, 0)
 getWordsTilSig sig = (B.fromChunks . reverse) `fmap` go Nothing []
   where
     sig' = S.pack [fromIntegral $ sig .&. 0xFF,
@@ -840,17 +829,6 @@ getWordsTilSig sig = (B.fromChunks . reverse) `fmap` go Nothing []
           where
             len = S.length chunk
             prefixes' = Just $ (S.index chunk (len - 3), S.index chunk (len - 2), S.index chunk (len - 1))
-#else
-getWordsTilSig sig = B.pack `fmap` go []
-  where
-    go acc = do
-      sig' <- lookAhead getWord32le
-      if sig == sig'
-          then skip 4 >> return (reverse acc)
-          else do
-              w <- getWord8
-              go (w:acc)
-#endif
 
 putLocalFile :: Entry -> Put
 putLocalFile f = do
@@ -990,22 +968,11 @@ putFileHeader offset local = do
 -- >     size of data                    2 bytes
 -- >     signature data (variable size)
 
-#if MIN_VERSION_binary(0,6,0)
 getDigitalSignature :: Get B.ByteString
 getDigitalSignature = do
   getWord32le >>= ensure (== 0x05054b50)
   sigSize <- getWord16le
   getLazyByteString (toEnum $ fromEnum sigSize)
-#else
-getDigitalSignature :: Get (Maybe B.ByteString)
-getDigitalSignature = do
-  hdrSig <- getWord32le
-  if hdrSig /= 0x05054b50
-     then return Nothing
-     else do
-        sigSize <- getWord16le
-        getLazyByteString (toEnum $ fromEnum sigSize) >>= return . Just
-#endif
 
 putDigitalSignature :: Maybe B.ByteString -> Put
 putDigitalSignature Nothing = return ()
