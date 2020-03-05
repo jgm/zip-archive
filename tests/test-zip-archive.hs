@@ -4,7 +4,6 @@
 -- runghc Test.hs
 
 import Codec.Archive.Zip
-import Control.Applicative
 import Control.Monad (unless)
 import Control.Exception (try)
 import System.Directory hiding (isSymbolicLink)
