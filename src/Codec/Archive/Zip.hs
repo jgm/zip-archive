@@ -97,6 +97,7 @@ import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLink
 import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
 import Data.Maybe (fromJust)
+import System.IO.Error (isAlreadyExistsError)
 #endif
 
 -- from bytestring
@@ -110,7 +111,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
-import System.IO.Error (isAlreadyExistsError)
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
