@@ -24,6 +24,8 @@ jobs:
             cabal: '3.2'
           - ghc: '9.0.1'
             cabal: '3.4'
+          - ghc: '9.2.1'
+            cabal: '3.4'
     steps:
     - uses: actions/checkout@v1
     - name: Install recent cabal/ghc
