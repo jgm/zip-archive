@@ -36,6 +36,7 @@ module Codec.Archive.Zip
        , Entry (..)
        , CompressionMethod (..)
        , EncryptionMethod (..)
+       , SymlinkOption (..)
        , ZipOption (..)
        , ZipException (..)
        , emptyArchive
@@ -168,13 +169,16 @@ data PKWAREVerificationType = CheckTimeByte
                             deriving (Read, Show, Eq)
 
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
-data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
-               | OptVerbose                 -- ^ Print information to stderr
-               | OptDestination FilePath    -- ^ Directory in which to extract
-               | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
-               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows.
-               | OptClobberSymbolicLinks   -- ^ Overwrite pre-existing symbolic links. This option is ignored on Windows.
+data ZipOption = OptRecursive                     -- ^ Recurse into directories when adding files
+               | OptVerbose                       -- ^ Print information to stderr
+               | OptDestination FilePath          -- ^ Directory in which to extract
+               | OptLocation FilePath Bool        -- ^ Where to place file when adding files and whether to append current path
+               | OptSymbolicLinks SymlinkOption   -- ^ Preserve symbolic links with the specified symlinking strategy. This option is ignored on Windows.
                deriving (Read, Show, Eq)
+
+data SymlinkOption = OptSymlinkPreserve     -- ^ Preserve symbolic links as such, and raise an error if the target already exists.
+                   | OptSymlinkClobber      -- ^ Preserve symbolic links as such, and overwrite pre-existing targets.
+                   deriving (Read, Show, Eq)
 
 data ZipException =
     CRC32Mismatch FilePath
@@ -407,9 +411,8 @@ writeEntry opts entry = do
 -- function behaves like `writeEntry`.
 writeSymbolicLinkEntry :: [ZipOption] -> Entry -> IO ()
 writeSymbolicLinkEntry opts entry =
-  if OptPreserveSymbolicLinks `notElem` opts
-     then writeEntry opts entry
-     else do
+  case [s | OptSymbolicLinks s <- opts] of
+     (symOpt:_) ->
         if isEntrySymbolicLink entry
            then do
              let prefixPath = case [d | OptDestination d <- opts] of
@@ -418,15 +421,16 @@ writeSymbolicLinkEntry opts entry =
              let targetPath = fromJust . symbolicLinkEntryTarget $ entry
              let symlinkPath = prefixPath </> eRelativePath entry
              when (OptVerbose `elem` opts) $ do
-               let logLine = if OptClobberSymbolicLinks `elem` opts
+               let logLine = if symOpt == OptSymlinkClobber
                      then "forcefully linking " ++ symlinkPath ++ " to " ++ targetPath
                      else "linking: " ++ symlinkPath ++ " to " ++ targetPath
                hPutStrLn stderr logLine
-             let symLinkFn = if OptClobberSymbolicLinks `elem` opts
+             let symLinkFn = if symOpt == OptSymlinkClobber
                               then forceSymLink
                               else createSymbolicLink
              symLinkFn targetPath symlinkPath
            else writeEntry opts entry
+     _ -> writeEntry opts entry
 
 
 -- | Writes a symbolic link, but removes any conflicting files and retries if necessary.
@@ -477,8 +481,8 @@ addFilesToArchive opts archive files = do
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = do
   let entries = zEntries archive
-  if OptPreserveSymbolicLinks `elem` opts
-    then do
+  case [s | OptSymbolicLinks s <- opts] of
+    _ : _ -> do
 #ifdef _WINDOWS
       mapM_ (writeEntry opts) entries
 #else
@@ -486,7 +490,7 @@ extractFilesFromArchive opts archive = do
       mapM_ (writeEntry opts) nonSymbolicLinkEntries
       mapM_ (writeSymbolicLinkEntry opts) symbolicLinkEntries
 #endif
-    else mapM_ (writeEntry opts) entries
+    _ -> mapM_ (writeEntry opts) entries
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
@@ -602,8 +606,8 @@ msDOSDateTimeToEpochTime MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTime
 #ifndef _WINDOWS
 getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
 getDirectoryContentsRecursive' opts path =
-  if OptPreserveSymbolicLinks `elem` opts
-     then do
+  case [s | OptSymbolicLinks s <- opts] of
+    _:_ -> do
        isDir <- doesDirectoryExist path
        if isDir
           then do
@@ -612,7 +616,7 @@ getDirectoryContentsRecursive' opts path =
                then return [path]
                else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
           else return [path]
-     else getDirectoryContentsRecursive path
+    _ -> getDirectoryContentsRecursive path
 #endif
 
 getDirectoryContentsRecursive :: FilePath -> IO [FilePath]
