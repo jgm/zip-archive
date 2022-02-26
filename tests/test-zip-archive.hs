@@ -19,6 +19,7 @@ import System.IO.Temp (withTempDirectory)
 import System.FilePath.Posix
 import System.Posix.Files
 import System.Process (rawSystem)
+import System.IO.Error (isAlreadyExistsError)
 #else
 import System.FilePath.Windows
 #endif
@@ -266,7 +267,12 @@ testExtractOverwriteExternalZipWithSymlinks tmpDir = TestCase $ do
   archive <- toArchive <$> BL.readFile "tests/zip_with_symlinks.zip"
   extractFilesFromArchive [OptSymbolicLinks OptSymlinkPreserve, OptDestination tmpDir] archive
   asserts
-  extractFilesFromArchive [OptSymbolicLinks OptSymlinkClobber, OptSymbolicLinks OptSymlinkPreserve, OptDestination tmpDir] archive
+  result <- try $ extractFilesFromArchive [OptSymbolicLinks OptSymlinkPreserve, OptDestination tmpDir] archive :: IO (Either IOError ())
+  case result of
+    Left e -> assertBool "Encountered already exists exception" $ isAlreadyExistsError e
+    Right _ -> assertFailure "extractFilesFromArchive should have failed"
+  asserts
+  extractFilesFromArchive [OptSymbolicLinks OptSymlinkClobber, OptDestination tmpDir] archive
   asserts
   where
     zipRootDir = "zip_test_dir_with_symlinks"
