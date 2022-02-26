@@ -345,7 +345,7 @@ checkPath fp =
   maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
     (resolve . splitDirectories $ fp)
   where
-    resolve :: Monad m => [String] -> m [String]
+    resolve :: (Monad m, MonadFail m) => [String] -> m [String]
     resolve =
       fmap reverse . foldl go (return [])
       where
