@@ -111,6 +111,7 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
+import Control.Monad.Fail (MonadFail)
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
@@ -351,7 +352,7 @@ checkPath fp =
   maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
     (resolve . splitDirectories $ fp)
   where
-    resolve :: Monad m => [String] -> m [String]
+    resolve :: (MonadFail m, Monad m) => [String] -> m [String]
     resolve =
       fmap reverse . foldl go (return [])
       where
@@ -360,8 +361,8 @@ checkPath fp =
         case x of
           "."  -> return xs
           ".." -> case xs of
+                    []     -> fail "outside of root path"
                     (_:ys) -> return ys
-                    _      -> fail "outside of root path"
           _    -> return (x:xs)
 
 -- | Writes contents of an 'Entry' to a file.  Throws a
