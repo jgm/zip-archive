@@ -360,8 +360,8 @@ checkPath fp =
         case x of
           "."  -> return xs
           ".." -> case xs of
-                    []     -> fail "outside of root path"
                     (_:ys) -> return ys
+                    _      -> fail "outside of root path"
           _    -> return (x:xs)
 
 -- | Writes contents of an 'Entry' to a file.  Throws a
