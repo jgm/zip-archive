@@ -424,7 +424,7 @@ writeSymbolicLinkEntry opts entry =
              when (OptVerbose `elem` opts) $ do
                let logLine = if symOpt == OptSymlinkClobber
                      then "forcefully linking " ++ symlinkPath ++ " to " ++ targetPath
-                     else "linking: " ++ symlinkPath ++ " to " ++ targetPath
+                     else "linking " ++ symlinkPath ++ " to " ++ targetPath
                hPutStrLn stderr logLine
              let symLinkFn = if symOpt == OptSymlinkClobber
                               then forceSymLink
