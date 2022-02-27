@@ -111,7 +111,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
-import Control.Monad.Fail (MonadFail)
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
