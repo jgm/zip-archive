@@ -363,9 +363,12 @@ checkPath fp =
           _    -> return (x:xs)
 
 -- | Writes contents of an 'Entry' to a file.
--- Uses either writeRegularEntry to write normal files, or
--- writeSymbolicLinkEntry to write symbolic links if platform supported and
--- a symbolic link option is specified.
+-- This applies for both symlink entries, and regular files.
+-- If processing a regular file, this may throw a
+-- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
+-- does not match the uncompressed data.
+-- Processing a symlink entry does nothing on Windows, and always does nothing
+-- if no symlink writing strategy is specified.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   when (isEncryptedEntry entry) $
@@ -378,9 +381,7 @@ writeEntry opts entry = do
   writeRegularEntry opts entry
 #endif
 
--- | Writes a regular file entry to a file. Throws a
--- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
--- does not match the uncompressed data.
+-- | Writes a regular file entry to a file.
 writeRegularEntry :: [ZipOption] -> Entry -> IO ()
 writeRegularEntry opts entry = do
   let relpath = eRelativePath entry
