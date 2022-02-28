@@ -95,7 +95,6 @@ import Control.Applicative
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink )
 import System.Posix.Types ( CMode(..) )
-import Data.List (partition)
 import Data.Maybe (fromJust)
 import System.IO.Error (isAlreadyExistsError)
 #endif
@@ -363,13 +362,27 @@ checkPath fp =
                     (_:ys) -> return ys
           _    -> return (x:xs)
 
--- | Writes contents of an 'Entry' to a file.  Throws a
--- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
--- does not match the uncompressed data.
+-- | Writes contents of an 'Entry' to a file.
+-- Uses either writeRegularEntry to write normal files, or
+-- writeSymbolicLinkEntry to write symbolic links if platform supported and
+-- a symbolic link option is specified.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   when (isEncryptedEntry entry) $
     E.throwIO $ CannotWriteEncryptedEntry (eRelativePath entry)
+#ifndef _WINDOWS
+  if isEntrySymbolicLink entry
+    then writeSymbolicLinkEntry opts entry
+    else writeRegularEntry opts entry
+#else
+  writeRegularEntry opts entry
+#endif
+
+-- | Writes a regular file entry to a file. Throws a
+-- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
+-- does not match the uncompressed data.
+writeRegularEntry :: [ZipOption] -> Entry -> IO ()
+writeRegularEntry opts entry = do
   let relpath = eRelativePath entry
   checkPath relpath
   path <- case [d | OptDestination d <- opts] of
@@ -405,32 +418,27 @@ writeEntry opts entry = do
 
 #ifndef _WINDOWS
 -- | Write an 'Entry' representing a symbolic link to a file.
--- If the 'Entry' does not represent a symbolic link or
--- the options do not contain 'OptPreserveSymbolicLinks`, this
--- function behaves like `writeEntry`.
+-- If the options do not contain 'OptPreserveSymbolicLinks`, this
+-- function is a noop.
 writeSymbolicLinkEntry :: [ZipOption] -> Entry -> IO ()
 writeSymbolicLinkEntry opts entry =
   case [s | OptSymbolicLinks s <- opts] of
-     (symOpt:_) ->
-        if isEntrySymbolicLink entry
-           then do
-             let prefixPath = case [d | OptDestination d <- opts] of
-                                   (x:_) -> x
-                                   _     -> ""
-             let targetPath = fromJust . symbolicLinkEntryTarget $ entry
-             let symlinkPath = prefixPath </> eRelativePath entry
-             when (OptVerbose `elem` opts) $ do
-               let logLine = if symOpt == OptSymlinkClobber
-                     then "forcefully linking " ++ symlinkPath ++ " to " ++ targetPath
-                     else "linking " ++ symlinkPath ++ " to " ++ targetPath
-               hPutStrLn stderr logLine
-             let symLinkFn = if symOpt == OptSymlinkClobber
-                              then forceSymLink
-                              else createSymbolicLink
-             symLinkFn targetPath symlinkPath
-           else writeEntry opts entry
-     _ -> writeEntry opts entry
-
+     (symOpt:_) -> do
+        let prefixPath = case [d | OptDestination d <- opts] of
+                              (x:_) -> x
+                              _     -> ""
+        let targetPath = fromJust . symbolicLinkEntryTarget $ entry
+        let symlinkPath = prefixPath </> eRelativePath entry
+        when (OptVerbose `elem` opts) $ do
+          let logLine = if symOpt == OptSymlinkClobber
+                then "forcefully linking " ++ symlinkPath ++ " to " ++ targetPath
+                else "linking " ++ symlinkPath ++ " to " ++ targetPath
+          hPutStrLn stderr logLine
+        let symLinkFn = if symOpt == OptSymlinkClobber
+                        then forceSymLink
+                        else createSymbolicLink
+        symLinkFn targetPath symlinkPath
+     _ -> return ()
 
 -- | Writes a symbolic link, but removes any conflicting files and retries if necessary.
 forceSymLink :: FilePath -> FilePath -> IO ()
@@ -479,17 +487,7 @@ addFilesToArchive opts archive files = do
 -- This function fails if encrypted entries are present
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = do
-  let entries = zEntries archive
-  case [s | OptSymbolicLinks s <- opts] of
-    _ : _ -> do
-#ifdef _WINDOWS
-      mapM_ (writeEntry opts) entries
-#else
-      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink entries
-      mapM_ (writeEntry opts) nonSymbolicLinkEntries
-      mapM_ (writeSymbolicLinkEntry opts) symbolicLinkEntries
-#endif
-    _ -> mapM_ (writeEntry opts) entries
+  mapM_ (writeEntry opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
