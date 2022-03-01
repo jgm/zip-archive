@@ -362,21 +362,20 @@ checkPath fp =
                     (_:ys) -> return ys
           _    -> return (x:xs)
 
--- | Writes contents of an 'Entry' to a file.
--- This applies for both symlink entries, and regular files.
--- If processing a regular file, this may throw a
--- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
--- does not match the uncompressed data.
--- Processing a symlink entry does nothing on Windows, and always does nothing
--- if no symlink writing strategy is specified.
+-- | Writes the contents of an 'Entry' to a file.
+-- If the entry is a regular file, a 'CRC32Mismatch' exception will be thrown
+-- if the CRC32 checksum for the entry does not match the uncompressed data.
+-- If the entry is a symbolic link, then it will be written as a regular
+-- file by default, or preserved as a symbolic link if the 'OptSymbolicLinks'
+-- option is specified and the OS is not Windows.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   when (isEncryptedEntry entry) $
     E.throwIO $ CannotWriteEncryptedEntry (eRelativePath entry)
 #ifndef _WINDOWS
   if isEntrySymbolicLink entry
-    then writeSymbolicLinkEntry opts entry
-    else writeRegularEntry opts entry
+     then writeSymbolicLinkEntry opts entry
+     else writeRegularEntry opts entry
 #else
   writeRegularEntry opts entry
 #endif
