@@ -19,7 +19,7 @@ import System.IO.Temp (withTempDirectory)
 import System.FilePath.Posix
 import System.Posix.Files
 import System.Process (rawSystem)
-import System.IO.Error (isAlreadyExistsError)
+import Codec.Archive.Zip (ZipOption(OptPreserveSymbolicLinks))
 #else
 import System.FilePath.Windows
 #endif
@@ -117,7 +117,7 @@ testFromToArchive tmpDir = TestCase $ do
   assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
 #ifndef _WINDOWS
   testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks"
-  archive2 <- addFilesToArchive [OptRecursive, OptSymbolicLinks OptSymlinkPreserve] emptyArchive [testDir]
+  archive2 <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testDir]
   assertEqual "for (toArchive $ fromArchive archive)" archive2 (toArchive $ fromArchive archive2)
 #endif
 
@@ -140,7 +140,7 @@ testAddFilesOptions tmpDir = TestCase $ do
 #ifndef _WINDOWS
   testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks2"
   archive3 <- addFilesToArchive [OptVerbose, OptRecursive] emptyArchive [testDir]
-  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptSymbolicLinks OptSymlinkPreserve] emptyArchive [testDir]
+  archive4 <- addFilesToArchive [OptVerbose, OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testDir]
   mapM_ putStrLn $ filesInArchive archive3
   mapM_ putStrLn $ filesInArchive archive4
   assertBool "for recursive and recursive by preserving symlinks addFilesToArchive"
@@ -235,10 +235,10 @@ testArchiveExtractSymlinks :: FilePath -> Test
 testArchiveExtractSymlinks tmpDir = TestCase $ do
   testDir <- createTestDirectoryWithSymlinks tmpDir "test_dir_with_symlinks3"
   let locationDir = "location_dir"
-  archive <- addFilesToArchive [OptRecursive, OptSymbolicLinks OptSymlinkPreserve, OptLocation locationDir True] emptyArchive [testDir]
+  archive <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks, OptLocation locationDir True] emptyArchive [testDir]
   removeDirectoryRecursive testDir
   let destination = "test_dest"
-  extractFilesFromArchive [OptSymbolicLinks OptSymlinkPreserve, OptDestination destination] archive
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination destination] archive
   isDirSymlink <- pathIsSymbolicLink (destination </> locationDir </> testDir </> "link_to_directory")
   isFileSymlink <- pathIsSymbolicLink (destination </> locationDir </> testDir </> "link_to_file")
   assertBool "Symbolic link to directory is preserved" isDirSymlink
@@ -248,7 +248,7 @@ testArchiveExtractSymlinks tmpDir = TestCase $ do
 testExtractExternalZipWithSymlinks :: FilePath -> Test
 testExtractExternalZipWithSymlinks tmpDir = TestCase $ do
   archive <- toArchive <$> BL.readFile "tests/zip_with_symlinks.zip"
-  extractFilesFromArchive [OptSymbolicLinks OptSymlinkPreserve, OptDestination tmpDir] archive
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination tmpDir] archive
   let zipRootDir = "zip_test_dir_with_symlinks"
       symlinkDir = tmpDir </> zipRootDir </> "symlink_to_dir_1"
       symlinkFile = tmpDir </> zipRootDir </> "symlink_to_file_1"
@@ -265,14 +265,9 @@ testExtractExternalZipWithSymlinks tmpDir = TestCase $ do
 testExtractOverwriteExternalZipWithSymlinks :: FilePath -> Test
 testExtractOverwriteExternalZipWithSymlinks tmpDir = TestCase $ do
   archive <- toArchive <$> BL.readFile "tests/zip_with_symlinks.zip"
-  extractFilesFromArchive [OptSymbolicLinks OptSymlinkPreserve, OptDestination tmpDir] archive
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination tmpDir] archive
   asserts
-  result <- try $ extractFilesFromArchive [OptSymbolicLinks OptSymlinkPreserve, OptDestination tmpDir] archive :: IO (Either IOError ())
-  case result of
-    Left e -> assertBool "Encountered already exists exception" $ isAlreadyExistsError e
-    Right _ -> assertFailure "extractFilesFromArchive should have failed"
-  asserts
-  extractFilesFromArchive [OptSymbolicLinks OptSymlinkClobber, OptDestination tmpDir] archive
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination tmpDir] archive
   asserts
   where
     zipRootDir = "zip_test_dir_with_symlinks"
@@ -292,7 +287,7 @@ testArchiveAndUnzip :: FilePath -> Test
 testArchiveAndUnzip tmpDir = TestCase $ do
   let dir = "test_dir_with_symlinks4"
   testDir <- createTestDirectoryWithSymlinks tmpDir dir
-  archive <- addFilesToArchive [OptRecursive, OptSymbolicLinks OptSymlinkPreserve] emptyArchive [testDir]
+  archive <- addFilesToArchive [OptRecursive, OptPreserveSymbolicLinks] emptyArchive [testDir]
   removeDirectoryRecursive testDir
   let zipFile = tmpDir </> "testUnzip.zip"
   BL.writeFile zipFile $ fromArchive archive
