@@ -429,23 +429,24 @@ writeSymbolicLinkEntry opts entry =
                               _     -> ""
         let targetPath = fromJust . symbolicLinkEntryTarget $ entry
         let symlinkPath = prefixPath </> eRelativePath entry
-        when (OptVerbose `elem` opts) $ do
-          let logLine = if symOpt == OptSymlinkClobber
-                then "forcefully linking " ++ symlinkPath ++ " to " ++ targetPath
-                else "linking " ++ symlinkPath ++ " to " ++ targetPath
-          hPutStrLn stderr logLine
+        let verboseOutput = OptVerbose `elem` opts
         let symLinkFn = if symOpt == OptSymlinkClobber
-                        then forceSymLink
+                        then forceSymLink verboseOutput
                         else createSymbolicLink
         symLinkFn targetPath symlinkPath
+        when verboseOutput $ do
+          hPutStrLn stderr $ "linked " ++ symlinkPath ++ " to " ++ targetPath
      _ -> return ()
 
 -- | Writes a symbolic link, but removes any conflicting files and retries if necessary.
-forceSymLink :: FilePath -> FilePath -> IO ()
-forceSymLink target linkName =
+forceSymLink :: Bool -> FilePath -> FilePath -> IO ()
+forceSymLink verbose target linkName =
     createSymbolicLink target linkName `E.catch`
       (\e -> if isAlreadyExistsError e
-             then removeLink linkName >> createSymbolicLink target linkName
+             then do
+               when verbose $ hPutStrLn stderr $ "removing conflicting file " ++ linkName
+               removeLink linkName
+               createSymbolicLink target linkName
              else ioError e)
 
 
