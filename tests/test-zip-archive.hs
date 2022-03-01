@@ -19,7 +19,6 @@ import System.IO.Temp (withTempDirectory)
 import System.FilePath.Posix
 import System.Posix.Files
 import System.Process (rawSystem)
-import Codec.Archive.Zip (ZipOption(OptPreserveSymbolicLinks))
 #else
 import System.FilePath.Windows
 #endif

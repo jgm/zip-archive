@@ -429,7 +429,6 @@ forceSymLink target linkName =
              then removeLink linkName >> createSymbolicLink target linkName
              else ioError e)
 
-
 -- | Get the target of a 'Entry' representing a symbolic link. This might fail
 -- if the 'Entry' does not represent a symbolic link
 symbolicLinkEntryTarget :: Entry -> Maybe FilePath
