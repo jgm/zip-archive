@@ -36,7 +36,6 @@ module Codec.Archive.Zip
        , Entry (..)
        , CompressionMethod (..)
        , EncryptionMethod (..)
-       , SymlinkOption (..)
        , ZipOption (..)
        , ZipException (..)
        , emptyArchive
@@ -95,8 +94,8 @@ import Control.Applicative
 #ifndef _WINDOWS
 import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink )
 import System.Posix.Types ( CMode(..) )
+import Data.List (partition)
 import Data.Maybe (fromJust)
-import System.IO.Error (isAlreadyExistsError)
 #endif
 
 -- from bytestring
@@ -110,6 +109,7 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
+import System.IO.Error (isAlreadyExistsError)
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
@@ -168,16 +168,12 @@ data PKWAREVerificationType = CheckTimeByte
                             deriving (Read, Show, Eq)
 
 -- | Options for 'addFilesToArchive' and 'extractFilesFromArchive'.
-data ZipOption = OptRecursive                     -- ^ Recurse into directories when adding files
-               | OptVerbose                       -- ^ Print information to stderr
-               | OptDestination FilePath          -- ^ Directory in which to extract
-               | OptLocation FilePath Bool        -- ^ Where to place file when adding files and whether to append current path
-               | OptSymbolicLinks SymlinkOption   -- ^ Preserve symbolic links with the specified symlinking strategy. This option is ignored on Windows.
+data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
+               | OptVerbose                 -- ^ Print information to stderr
+               | OptDestination FilePath    -- ^ Directory in which to extract
+               | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
+               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows.
                deriving (Read, Show, Eq)
-
-data SymlinkOption = OptSymlinkPreserve     -- ^ Preserve symbolic links as such, and raise an error if the target already exists.
-                   | OptSymlinkClobber      -- ^ Preserve symbolic links as such, and overwrite pre-existing targets.
-                   deriving (Read, Show, Eq)
 
 data ZipException =
     CRC32Mismatch FilePath
@@ -350,6 +346,7 @@ checkPath fp =
   maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
     (resolve . splitDirectories $ fp)
   where
+    resolve :: Monad m => [String] -> m [String]
     resolve =
       fmap reverse . foldl go (return [])
       where
@@ -362,27 +359,13 @@ checkPath fp =
                     (_:ys) -> return ys
           _    -> return (x:xs)
 
--- | Writes the contents of an 'Entry' to a file.
--- If the entry is a regular file, a 'CRC32Mismatch' exception will be thrown
--- if the CRC32 checksum for the entry does not match the uncompressed data.
--- If the entry is a symbolic link, then it will be written as a regular
--- file by default, or preserved as a symbolic link if the 'OptSymbolicLinks'
--- option is specified and the OS is not Windows.
+-- | Writes contents of an 'Entry' to a file.  Throws a
+-- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
+-- does not match the uncompressed data.
 writeEntry :: [ZipOption] -> Entry -> IO ()
 writeEntry opts entry = do
   when (isEncryptedEntry entry) $
     E.throwIO $ CannotWriteEncryptedEntry (eRelativePath entry)
-#ifndef _WINDOWS
-  if isEntrySymbolicLink entry
-     then writeSymbolicLinkEntry opts entry
-     else writeRegularEntry opts entry
-#else
-  writeRegularEntry opts entry
-#endif
-
--- | Writes a regular file entry to a file.
-writeRegularEntry :: [ZipOption] -> Entry -> IO ()
-writeRegularEntry opts entry = do
   let relpath = eRelativePath entry
   checkPath relpath
   path <- case [d | OptDestination d <- opts] of
@@ -418,35 +401,33 @@ writeRegularEntry opts entry = do
 
 #ifndef _WINDOWS
 -- | Write an 'Entry' representing a symbolic link to a file.
--- If the options do not contain 'OptPreserveSymbolicLinks`, this
--- function is a noop.
+-- If the 'Entry' does not represent a symbolic link or
+-- the options do not contain 'OptPreserveSymbolicLinks`, this
+-- function behaves like `writeEntry`.
 writeSymbolicLinkEntry :: [ZipOption] -> Entry -> IO ()
 writeSymbolicLinkEntry opts entry =
-  case [s | OptSymbolicLinks s <- opts] of
-     (symOpt:_) -> do
-        let prefixPath = case [d | OptDestination d <- opts] of
-                              (x:_) -> x
-                              _     -> ""
-        let targetPath = fromJust . symbolicLinkEntryTarget $ entry
-        let symlinkPath = prefixPath </> eRelativePath entry
-        let verboseOutput = OptVerbose `elem` opts
-        let symLinkFn = if symOpt == OptSymlinkClobber
-                        then forceSymLink verboseOutput
-                        else createSymbolicLink
-        symLinkFn targetPath symlinkPath
-        when verboseOutput $ do
-          hPutStrLn stderr $ "linked " ++ symlinkPath ++ " to " ++ targetPath
-     _ -> return ()
+  if OptPreserveSymbolicLinks `notElem` opts
+     then writeEntry opts entry
+     else do
+       if isEntrySymbolicLink entry
+           then do
+             let prefixPath = case [d | OptDestination d <- opts] of
+                                   (x:_) -> x
+                                   _     -> ""
+             let targetPath = fromJust . symbolicLinkEntryTarget $ entry
+             let symlinkPath = prefixPath </> eRelativePath entry
+             when (OptVerbose `elem` opts) $ do
+               hPutStrLn stderr $ "linking " ++ symlinkPath ++ " to " ++ targetPath
+             forceSymLink targetPath symlinkPath
+           else writeEntry opts entry
+
 
 -- | Writes a symbolic link, but removes any conflicting files and retries if necessary.
-forceSymLink :: Bool -> FilePath -> FilePath -> IO ()
-forceSymLink verbose target linkName =
+forceSymLink :: FilePath -> FilePath -> IO ()
+forceSymLink target linkName =
     createSymbolicLink target linkName `E.catch`
       (\e -> if isAlreadyExistsError e
-             then do
-               when verbose $ hPutStrLn stderr $ "removing conflicting file " ++ linkName
-               removeLink linkName
-               createSymbolicLink target linkName
+             then removeLink linkName >> createSymbolicLink target linkName
              else ioError e)
 
 
@@ -487,7 +468,18 @@ addFilesToArchive opts archive files = do
 -- not in Windows.
 -- This function fails if encrypted entries are present
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
-extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archive
+extractFilesFromArchive opts archive = do
+  let entries = zEntries archive
+  if OptPreserveSymbolicLinks `elem` opts
+    then do
+#ifdef _WINDOWS
+      mapM_ (writeEntry opts) entries
+#else
+      let (symbolicLinkEntries, nonSymbolicLinkEntries) = partition isEntrySymbolicLink entries
+      mapM_ (writeEntry opts) nonSymbolicLinkEntries
+      mapM_ (writeSymbolicLinkEntry opts) symbolicLinkEntries
+#endif
+    else mapM_ (writeEntry opts) entries
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
@@ -603,8 +595,8 @@ msDOSDateTimeToEpochTime MSDOSDateTime {msDOSDate = dosDate, msDOSTime = dosTime
 #ifndef _WINDOWS
 getDirectoryContentsRecursive' :: [ZipOption] -> FilePath -> IO [FilePath]
 getDirectoryContentsRecursive' opts path =
-  case [s | OptSymbolicLinks s <- opts] of
-    _:_ -> do
+  if OptPreserveSymbolicLinks `elem` opts
+     then do
        isDir <- doesDirectoryExist path
        if isDir
           then do
@@ -613,7 +605,7 @@ getDirectoryContentsRecursive' opts path =
                then return [path]
                else getDirectoryContentsRecursivelyBy (getDirectoryContentsRecursive' opts) path
           else return [path]
-    _ -> getDirectoryContentsRecursive path
+     else getDirectoryContentsRecursive path
 #endif
 
 getDirectoryContentsRecursive :: FilePath -> IO [FilePath]
