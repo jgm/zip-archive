@@ -487,8 +487,7 @@ addFilesToArchive opts archive files = do
 -- not in Windows.
 -- This function fails if encrypted entries are present
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
-extractFilesFromArchive opts archive = do
-  mapM_ (writeEntry opts) $ zEntries archive
+extractFilesFromArchive opts archive = mapM_ (writeEntry opts) $ zEntries archive
 
 --------------------------------------------------------------------------------
 -- Internal functions for reading and writing zip binary format.
