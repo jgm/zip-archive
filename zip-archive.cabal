@@ -103,4 +103,3 @@ Test-Suite test-zip-archive
     cpp-options:     -D_WINDOWS
   else
     Build-depends:   unix
-  build-tools: unzip
