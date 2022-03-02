@@ -72,6 +72,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
                                 , testExtractExternalZipWithSymlinks
+                                , testExtractOverwriteExternalZipWithSymlinks
 #endif
                                 ]
 #ifndef _WINDOWS
@@ -259,6 +260,27 @@ testExtractExternalZipWithSymlinks tmpDir = TestCase $ do
   assertBool "Symbolic link to file is preserved" isFileSymlink
   assertBool "Target file exists" targetFileExists
   removeDirectoryRecursive tmpDir
+
+testExtractOverwriteExternalZipWithSymlinks :: FilePath -> Test
+testExtractOverwriteExternalZipWithSymlinks tmpDir = TestCase $ do
+  archive <- toArchive <$> BL.readFile "tests/zip_with_symlinks.zip"
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination tmpDir] archive
+  asserts
+  extractFilesFromArchive [OptPreserveSymbolicLinks, OptDestination tmpDir] archive
+  asserts
+  where
+    zipRootDir = "zip_test_dir_with_symlinks"
+    symlinkDir = tmpDir </> zipRootDir </> "symlink_to_dir_1"
+    symlinkFile = tmpDir </> zipRootDir </> "symlink_to_file_1"
+    asserts = do
+      isDirSymlink <- pathIsSymbolicLink symlinkDir
+      targetDirExists <- doesDirectoryExist symlinkDir
+      isFileSymlink <- pathIsSymbolicLink symlinkFile
+      targetFileExists <- doesFileExist symlinkFile
+      assertBool "Symbolic link to directory is preserved" isDirSymlink
+      assertBool "Target directory exists" targetDirExists
+      assertBool "Symbolic link to file is preserved" isFileSymlink
+      assertBool "Target file exists" targetFileExists
 
 testArchiveAndUnzip :: FilePath -> Test
 testArchiveAndUnzip tmpDir = TestCase $ do

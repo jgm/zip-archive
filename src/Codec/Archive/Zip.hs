@@ -92,7 +92,7 @@ import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
 import Control.Applicative
 #ifndef _WINDOWS
-import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink )
+import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink )
 import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
 import Data.Maybe (fromJust)
@@ -109,6 +109,7 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
+import System.IO.Error (isAlreadyExistsError)
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
@@ -416,9 +417,17 @@ writeSymbolicLinkEntry opts entry =
              let symlinkPath = prefixPath </> eRelativePath entry
              when (OptVerbose `elem` opts) $ do
                hPutStrLn stderr $ "linking " ++ symlinkPath ++ " to " ++ targetPath
-             createSymbolicLink targetPath symlinkPath
+             forceSymLink targetPath symlinkPath
            else writeEntry opts entry
 
+
+-- | Writes a symbolic link, but removes any conflicting files and retries if necessary.
+forceSymLink :: FilePath -> FilePath -> IO ()
+forceSymLink target linkName =
+    createSymbolicLink target linkName `E.catch`
+      (\e -> if isAlreadyExistsError e
+             then removeLink linkName >> createSymbolicLink target linkName
+             else ioError e)
 
 -- | Get the target of a 'Entry' representing a symbolic link. This might fail
 -- if the 'Entry' does not represent a symbolic link
