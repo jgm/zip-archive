@@ -487,7 +487,13 @@ normalizePath :: FilePath -> String
 normalizePath path =
   let dir   = takeDirectory path
       fn    = takeFileName path
-      (_drive, dir') = splitDrive dir
+      dir' = case dir of
+#ifdef _WINDOWS
+               (c:':':d:xs) | isLetter c
+                            , d == '/' || d == '\\'
+                            -> xs  -- remove drive
+#endif
+               _ -> dir
       -- note: some versions of filepath return ["."] if no dir
       dirParts = filter (/=".") $ splitDirectories dir'
   in  intercalate "/" (dirParts ++ [fn])
