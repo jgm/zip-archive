@@ -1,3 +1,26 @@
+zip-archive 0.4.2
+
+  * Fix problem with files with colon (#89).
+  * Remove build-tools.  This was used to indicate that the 'unzip'
+    executable was needed for testing, but it was never intended to be used
+    this way and now the field is deprecated.  The current test suite
+    simply skips the test using the unzip executable (with a warning) if
+    'unzip' is not in the path.
+  * Remove existing symlinks when extracting zip files with symlinks (#60,
+    Vikrem).  Previously, writeEntry would raise an error if it tried to
+    create a symlink and a symlink already existed at that path.  This
+    behavior was inconsistent with its behavior for regular files, which
+    it overwrote without comment.  This commit causes symlinks to be replaced
+    by writeEntry instead of an error being raised.
+  * Remove binary < 0.6 CPP.  It's no longer needed because we don't support
+    binary < 0.6.  Also use manySig instead of many, to get better error
+    messages.
+  * Add type annotation for printf.
+  * Better checking for unsafe paths (#55).  This method allows things like
+    `foo/bar/../../baz`.
+  * Require base >= 4.5 (#56)
+  * Add GitHub CI.
+
 zip-archive 0.4.1
 
   * writEntry behavior change: Improve raising of UnsafePath error (#55).
