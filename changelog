@@ -1,3 +1,7 @@
+zip-archive 0.4.2.1
+
+  * Fix Windows build regression (#61).
+
 zip-archive 0.4.2
 
   * Fix problem with files with colon (#89).
