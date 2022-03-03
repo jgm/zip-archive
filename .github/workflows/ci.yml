@@ -54,3 +54,21 @@ jobs:
     - name: Build and test
       run: |
           ./stack install --fast --test --haddock --no-haddock-deps
+
+  windows:
+
+    runs-on: windows-2019
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+          stack update
+          stack test --dependencies-only --fast
+
+    - name: Build and test
+      shell: cmd
+      run: |
+          stack test --fast --test-arguments="--hide-successes --ansi-tricks=false"
+
