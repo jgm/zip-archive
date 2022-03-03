@@ -91,7 +91,9 @@ import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
 import Control.Applicative
-#ifndef _WINDOWS
+#ifdef _WINDOWS
+import Data.Char (isLetter)
+#else
 import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink )
 import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
