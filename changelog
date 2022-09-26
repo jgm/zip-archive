@@ -1,3 +1,8 @@
+zip-archive 0.4.2.2
+
+  * Avoid using `which` in test suite. Instead, use the more portable
+    `command -v` (#62).
+
 zip-archive 0.4.2.1
 
   * Fix Windows build regression (#61).
