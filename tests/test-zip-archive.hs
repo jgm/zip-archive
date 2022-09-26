@@ -1,11 +1,12 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- Test suite for Codec.Archive.Zip
 -- runghc Test.hs
 
 import Codec.Archive.Zip
 import Control.Monad (unless)
-import Control.Exception (try)
+import Control.Exception (try, catch, SomeException)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -51,7 +52,8 @@ createTestDirectoryWithSymlinks prefixDir  baseDir = do
 main :: IO Counts
 main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
 #ifndef _WINDOWS
-  ec <- rawSystem "command" ["-v", "unzip"]
+  ec <- catch (rawSystem "command" ["-v", "unzip"])
+         (\(_ :: SomeException) -> rawSystem "which" ["unzip"])
   let unzipInPath = ec == ExitSuccess
   unless unzipInPath $
     putStrLn "\n\nunzip is not in path; skipping testArchiveAndUnzip\n"
