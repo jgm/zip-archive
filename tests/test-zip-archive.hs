@@ -51,7 +51,7 @@ createTestDirectoryWithSymlinks prefixDir  baseDir = do
 main :: IO Counts
 main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
 #ifndef _WINDOWS
-  ec <- rawSystem "which" ["unzip"]
+  ec <- rawSystem "command" ["-v", "unzip"]
   let unzipInPath = ec == ExitSuccess
   unless unzipInPath $
     putStrLn "\n\nunzip is not in path; skipping testArchiveAndUnzip\n"
