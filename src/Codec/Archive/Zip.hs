@@ -131,7 +131,7 @@ manySig sig p = do
 data Archive = Archive
                 { zEntries                :: [Entry]              -- ^ Files in zip archive
                 , zSignature              :: Maybe B.ByteString   -- ^ Digital signature
-                , zComment                :: B.ByteString         -- ^ Comment for whole zip archive
+                , zComment                :: !B.ByteString        -- ^ Comment for whole zip archive
                 } deriving (Read, Show)
 
 instance Binary Archive where
@@ -141,18 +141,18 @@ instance Binary Archive where
 -- | Representation of an archived file, including content and metadata.
 data Entry = Entry
                { eRelativePath            :: FilePath            -- ^ Relative path, using '/' as separator
-               , eCompressionMethod       :: CompressionMethod   -- ^ Compression method
-               , eEncryptionMethod        :: EncryptionMethod    -- ^ Encryption method
-               , eLastModified            :: Integer             -- ^ Modification time (seconds since unix epoch)
-               , eCRC32                   :: Word32              -- ^ CRC32 checksum
-               , eCompressedSize          :: Word32              -- ^ Compressed size in bytes
-               , eUncompressedSize        :: Word32              -- ^ Uncompressed size in bytes
-               , eExtraField              :: B.ByteString        -- ^ Extra field - unused by this library
-               , eFileComment             :: B.ByteString        -- ^ File comment - unused by this library
-               , eVersionMadeBy           :: Word16              -- ^ Version made by field
-               , eInternalFileAttributes  :: Word16              -- ^ Internal file attributes - unused by this library
-               , eExternalFileAttributes  :: Word32              -- ^ External file attributes (system-dependent)
-               , eCompressedData          :: B.ByteString        -- ^ Compressed contents of file
+               , eCompressionMethod       :: !CompressionMethod   -- ^ Compression method
+               , eEncryptionMethod        :: !EncryptionMethod    -- ^ Encryption method
+               , eLastModified            :: !Integer             -- ^ Modification time (seconds since unix epoch)
+               , eCRC32                   :: !Word32              -- ^ CRC32 checksum
+               , eCompressedSize          :: !Word32              -- ^ Compressed size in bytes
+               , eUncompressedSize        :: !Word32              -- ^ Uncompressed size in bytes
+               , eExtraField              :: !B.ByteString        -- ^ Extra field - unused by this library
+               , eFileComment             :: !B.ByteString        -- ^ File comment - unused by this library
+               , eVersionMadeBy           :: !Word16              -- ^ Version made by field
+               , eInternalFileAttributes  :: !Word16              -- ^ Internal file attributes - unused by this library
+               , eExternalFileAttributes  :: !Word32              -- ^ External file attributes (system-dependent)
+               , eCompressedData          :: !B.ByteString        -- ^ Compressed contents of file
                } deriving (Read, Show, Eq)
 
 -- | Compression methods.
@@ -160,8 +160,8 @@ data CompressionMethod = Deflate
                        | NoCompression
                        deriving (Read, Show, Eq)
 
-data EncryptionMethod = NoEncryption            -- ^ Entry is not encrypted
-                      | PKWAREEncryption Word8  -- ^ Entry is encrypted with the traditional PKWARE encryption
+data EncryptionMethod = NoEncryption             -- ^ Entry is not encrypted
+                      | PKWAREEncryption !Word8  -- ^ Entry is encrypted with the traditional PKWARE encryption
                       deriving (Read, Show, Eq)
 
 -- | The way the password should be verified during entry decryption
@@ -173,7 +173,7 @@ data PKWAREVerificationType = CheckTimeByte
 data ZipOption = OptRecursive               -- ^ Recurse into directories when adding files
                | OptVerbose                 -- ^ Print information to stderr
                | OptDestination FilePath    -- ^ Directory in which to extract
-               | OptLocation FilePath Bool  -- ^ Where to place file when adding files and whether to append current path
+               | OptLocation FilePath !Bool -- ^ Where to place file when adding files and whether to append current path
                | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows.
                deriving (Read, Show, Eq)
 
