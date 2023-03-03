@@ -55,7 +55,7 @@ Library
   Build-depends:     base >= 4.5 && < 5,
                      pretty,
                      containers,
-                     binary >= 0.6,
+                     binary >= 0.7.2,
                      zlib,
                      filepath,
                      bytestring >= 0.10.0,

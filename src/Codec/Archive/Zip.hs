@@ -202,13 +202,9 @@ toArchive = decode
 -- With earlier versions, it will always return a Right value,
 -- raising an error if parsing fails.
 toArchiveOrFail :: B.ByteString -> Either String Archive
-#if MIN_VERSION_binary(0,7,0)
 toArchiveOrFail bs = case decodeOrFail bs of
                            Left (_,_,e)  -> Left e
                            Right (_,_,x) -> Right x
-#else
-toArchiveOrFail bs = Right $ toArchive bs
-#endif
 
 -- | Writes an 'Archive' structure to a raw zip archive (in a lazy bytestring).
 fromArchive :: Archive -> B.ByteString
