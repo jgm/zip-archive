@@ -807,28 +807,28 @@ getCompressedData = do
   numbytes <- lookAhead $ findEnd 0
   getLazyByteString numbytes
  where
+   chunkSize :: Int64
+   chunkSize = 16384
    findEnd :: Int64 -> Get Int64
    findEnd n = do
      sig <- lookAhead getWord32le
-     if sig .&. 0xFFFF == 0x4b50
-       then
-         case sig of
-           0x08074b50 -> skip 4 >> return n
-           0x04034b50 -> -- sig for local file header
-            return (n - 12) -- rewind past data description
-           0x02014b50 -> -- sig for file header
-            return (n - 12) -- rewind past data description
-           0x06054b50 -> -- sig for end of central directory header
-            return (n - 12) -- rewind past data description
-           _ -> skip 2 >> findEnd (n + 2)
-       else
-         if sig .&. 0xFF00 == 0x5000
-            then skip 1 >> findEnd (n + 1)
-            else if sig .&. 0xFF0000 == 0x500000
-              then skip 2 >> findEnd (n + 2)
-              else if sig .&. 0xFF000000 == 0x50000000
-                then skip 3 >> findEnd (n + 3)
-                else skip 4 >> findEnd (n + 4)
+     case sig of
+       0x08074b50 -> skip 4 >> return n
+       0x04034b50 -> -- sig for local file header
+        return (n - 12) -- rewind past data description
+       0x02014b50 -> -- sig for file header
+        return (n - 12) -- rewind past data description
+       0x06054b50 -> -- sig for end of central directory header
+        return (n - 12) -- rewind past data description
+       x | x .&. 0xFF == 0x50 -> skip 1 >> findEnd (n + 1)
+       _ -> do bs <- lookAhead $ getLazyByteString chunkSize
+                             <|> getRemainingLazyByteString
+               let bsLen = B.length bs
+               let mbIdx = B.elemIndex 0x50 bs
+               case mbIdx of
+                 Nothing -> skip (fromIntegral bsLen) >> findEnd (n + bsLen)
+                 Just 0  -> skip 1 >> findEnd (n + 1)
+                 Just idx -> skip (fromIntegral idx) >> findEnd (n + idx)
 
 putLocalFile :: Entry -> Put
 putLocalFile f = do

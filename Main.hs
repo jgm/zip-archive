@@ -16,7 +16,6 @@ import System.Environment
 import System.Directory
 import System.Console.GetOpt
 import Control.Monad ( when )
-import Control.Applicative ( (<$>) )
 import Data.Version ( showVersion )
 import Paths_zip_archive ( version )
 import Debug.Trace ( traceShowId )
@@ -70,7 +69,9 @@ main = do
   let cmd = case filter (`notElem` [Quiet, Help, Version, Debug]) opts of
                   []    -> Recursive
                   (x:_) -> x
-  let (archivePath : files) = args
+  (archivePath : files) <- case args of
+      [] -> quit True "No archive path given"
+      _ -> return args
   exists <- doesFileExist archivePath
   archive <- if exists
                 then toArchive <$> B.readFile archivePath
