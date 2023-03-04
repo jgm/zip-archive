@@ -1,3 +1,12 @@
+zip-archive 0.4.3
+
+  * Improve code for retrieving compressed data of unknown length (#63).
+    Do not assume we'll have the signature 0x08074b50 that is
+    sometimes used for the data description, because it is not
+    in the spec and is not always used.
+  * Make some record fields strict.
+  * Require binary >= 0.7.2, remove some CPP
+
 zip-archive 0.4.2.2
 
   * Use `command -v` before trying `which` in the test suite (#62).
