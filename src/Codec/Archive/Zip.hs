@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ViewPatterns #-}
 ------------------------------------------------------------------------
@@ -99,6 +100,8 @@ import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
 import Data.Maybe (fromJust)
 #endif
+
+import GHC.Int (Int64)
 
 -- from bytestring
 import qualified Data.ByteString as S
@@ -781,10 +784,10 @@ getLocalFile = do
       then getLazyByteString (fromIntegral compressedSize)
       else -- If bit 3 of general purpose bit flag is set,
            -- then we need to read until we get to the
-           -- data descriptor record.  We assume that the
-           -- record has signature 0x08074b50; this is not required
-           -- by the specification but is common.
-           do raw <- getWordsTilSig 0x08074b50
+           -- data descriptor record.
+           do raw <- getCompressedData
+              sig <- lookAhead getWord32le
+              when (sig == 0x08074b50) $ skip 4
               skip 4 -- crc32
               cs <- getWord32le  -- compressed size
               skip 4 -- uncompressed size
@@ -793,54 +796,39 @@ getLocalFile = do
                  else fail "Content size mismatch in data descriptor record"
   return (fromIntegral offset, compressedData)
 
-getWordsTilSig :: Word32 -> Get B.ByteString
-getWordsTilSig sig = (B.fromChunks . reverse) `fmap` go Nothing []
-  where
-    sig' = S.pack [fromIntegral $ sig .&. 0xFF,
-                   fromIntegral $ sig `shiftR`  8 .&. 0xFF,
-                   fromIntegral $ sig `shiftR` 16 .&. 0xFF,
-                   fromIntegral $ sig `shiftR` 24 .&. 0xFF]
-    chunkSize = 16384
-    --chunkSize = 4 -- for testing prefix match
-    checkChunk chunk = do -- find in content
-          let (prefix, start) = S.breakSubstring sig' chunk
-          if S.null start
-            then return $ Right chunk
-            else return $ Left $ S.length prefix
-    go :: Maybe (Word8, Word8, Word8) -> [S.ByteString] -> Get [S.ByteString]
-    go prefixes acc = do
-      -- note: lookAheadE will rewind if the result is Left
-      eitherChunkOrIndex <- lookAheadE $ do
-          chunk <- getByteString chunkSize <|> B.toStrict `fmap` getRemainingLazyByteString
-          case prefixes of
-            Just (byte3,byte2,byte1) ->
-              let len = S.length chunk in
-                if len >= 1 &&
-                   S.pack [byte3,byte2,byte1,S.index chunk 0] == sig'
-                then return $ Left $ -3
-                else if len >= 2 &&
-                   S.pack [byte2,byte1,S.index chunk 0,S.index chunk 1] == sig'
-                then return $ Left $ -2
-                else if len >= 3 &&
-                   S.pack [byte1,S.index chunk 0,S.index chunk 1,S.index chunk 2] == sig'
-                then return $ Left $ -1
-                else checkChunk chunk
-            Nothing -> checkChunk chunk
-      case eitherChunkOrIndex of
-        Left index -> if index < 0
-            then do -- prefix match
-                skip (4 + index) -- skip over partial match in next chunk
-                return $ (S.take (S.length (head acc) + index) (head acc)) : (tail acc)
-            else do -- match inside this chunk
-                lastchunk <- getByteString index -- must read again
-                skip 4
-                return (lastchunk:acc)
-        Right chunk -> if len == chunkSize
-            then go prefixes' (chunk:acc)
-            else fail $ "getWordsTilSig: signature not found before EOF"
-          where
-            len = S.length chunk
-            prefixes' = Just $ (S.index chunk (len - 3), S.index chunk (len - 2), S.index chunk (len - 1))
+-- Move forward over data (not consuming it) until:
+-- - start of the next local file header
+-- - start of archive decryption header
+-- Then back up 12 bytes (the data description record)
+-- and possibly 4 more bytes
+-- (conventional but not required sig 0x08074b50 for data description record).
+getCompressedData :: Get B.ByteString
+getCompressedData = do
+  numbytes <- lookAhead $ findEnd 0
+  getLazyByteString numbytes
+ where
+   findEnd :: Int64 -> Get Int64
+   findEnd n = do
+     sig <- lookAhead getWord32le
+     if sig .&. 0xFFFF == 0x4b50
+       then
+         case sig of
+           0x08074b50 -> skip 4 >> return n
+           0x04034b50 -> -- sig for local file header
+            return (n - 12) -- rewind past data description
+           0x02014b50 -> -- sig for file header
+            return (n - 12) -- rewind past data description
+           0x06054b50 -> -- sig for end of central directory header
+            return (n - 12) -- rewind past data description
+           _ -> skip 2 >> findEnd (n + 2)
+       else
+         if sig .&. 0xFF00 == 0x5000
+            then skip 1 >> findEnd (n + 1)
+            else if sig .&. 0xFF0000 == 0x500000
+              then skip 2 >> findEnd (n + 2)
+              else if sig .&. 0xFF000000 == 0x50000000
+                then skip 3 >> findEnd (n + 3)
+                else skip 4 >> findEnd (n + 4)
 
 putLocalFile :: Entry -> Put
 putLocalFile f = do
