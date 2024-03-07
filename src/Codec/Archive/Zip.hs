@@ -969,8 +969,9 @@ fromString :: String -> B.ByteString
 fromString = TL.encodeUtf8 . TL.pack
 
 data DecompressResult =
-    DecompressSuccess [S.ByteString] B.ByteString
-                       -- chunks in reverse, remainder
+    DecompressSuccess B.ByteString -- bytes remaining
+      -- (we just discard decompressed chunks, because we only
+      -- want to know where the compressed data ends)
   | DecompressFailure ZlibInt.DecompressError
 
 getCompressedData :: CompressionMethod -> Get B.ByteString
@@ -1003,12 +1004,8 @@ getCompressedData NoCompression = do
 getCompressedData Deflate = do
   remainingBytes <- lookAhead getRemainingLazyByteString
   let result = ZlibInt.foldDecompressStreamWithInput
-                (\bs res ->
-                    case res of
-                      DecompressSuccess chunks remainder
-                        -> DecompressSuccess (bs:chunks) remainder
-                      x -> x)
-                (DecompressSuccess [])
+                (\_bs res -> res)
+                DecompressSuccess
                 DecompressFailure
                 (ZlibInt.decompressST ZlibInt.rawFormat
                  ZlibInt.defaultDecompressParams{
@@ -1016,7 +1013,7 @@ getCompressedData Deflate = do
                 remainingBytes
   case result of
     DecompressFailure err -> fail (show err)
-    DecompressSuccess _chunks afterCompressedBytes ->
+    DecompressSuccess afterCompressedBytes ->
       -- Consume the compressed bytes; we don't do anything with
       -- the decompressed chunks. We are just decompressing as a
       -- way of finding where the compressed data ends.
