@@ -769,7 +769,11 @@ getLocalFile = do
   getWord32le >>= ensure (== 0x04034b50)
   skip 2  -- version
   bitflag <- getWord16le
-  skip 2  -- compressionMethod
+  rawCompressionMethod <- getWord16le
+  compressionMethod <- case rawCompressionMethod of
+                        0 -> return NoCompression
+                        8 -> return Deflate
+                        _ -> fail $ "Unknown compression method " ++ show rawCompressionMethod
   skip 2  -- last mod file time
   skip 2  -- last mod file date
   skip 4  -- crc32
@@ -781,12 +785,13 @@ getLocalFile = do
   extraFieldLength <- getWord16le
   skip (fromIntegral fileNameLength)  -- filename
   skip (fromIntegral extraFieldLength) -- extra field
-  compressedData <- if bitflag .&. 0O10 == 0
+  compressedData <-
+    if bitflag .&. 0O10 == 0
       then getLazyByteString (fromIntegral compressedSize)
       else -- If bit 3 of general purpose bit flag is set,
            -- then we need to read until we get to the
            -- data descriptor record.
-           do raw <- getCompressedData
+           do raw <- getCompressedData compressionMethod
               sig <- lookAhead getWord32le
               when (sig == 0x08074b50) $ skip 4
               skip 4 -- crc32
@@ -794,7 +799,10 @@ getLocalFile = do
               skip 4 -- uncompressed size
               if fromIntegral cs == B.length raw
                  then return raw
-                 else fail "Content size mismatch in data descriptor record"
+                 else fail $ printf
+                       ("Content size mismatch in data descriptor record: "
+                         <> "expected %d, got %d bytes")
+                       cs (B.length raw)
   return (fromIntegral offset, compressedData)
 
 putLocalFile :: Entry -> Put
@@ -965,8 +973,34 @@ data DecompressResult =
                        -- chunks in reverse, remainder
   | DecompressFailure ZlibInt.DecompressError
 
-getCompressedData :: Get B.ByteString
-getCompressedData = do
+getCompressedData :: CompressionMethod -> Get B.ByteString
+getCompressedData NoCompression = do
+  -- we assume there will be a signature on the data descriptor,
+  -- otherwise we have no way of identifying where the data ends!
+  -- The signature 0x08074b50 is commonly used but not required by spec.
+  let findSigPos = do
+        w1 <- getWord8
+        if w1 == 0x50
+           then do
+             w2 <- getWord8
+             if w2 == 0x4b
+                then do
+                  w3 <- getWord8
+                  if w3 == 0x07
+                     then do
+                       w4 <- getWord8
+                       if w4 == 0x08
+                          then (\x -> x - 4) <$> bytesRead
+                          else findSigPos
+                     else findSigPos
+                else findSigPos
+           else findSigPos
+  pos <- bytesRead
+  sigpos <- lookAhead findSigPos <|>
+              fail "getCompressedData can't find data descriptor signature"
+  let compressedBytes = sigpos - pos
+  getLazyByteString compressedBytes
+getCompressedData Deflate = do
   remainingBytes <- lookAhead getRemainingLazyByteString
   let result = ZlibInt.foldDecompressStreamWithInput
                 (\bs res ->
