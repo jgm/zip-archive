@@ -101,8 +101,6 @@ import Data.List (partition)
 import Data.Maybe (fromJust)
 #endif
 
-import GHC.Int (Int64)
-
 -- from bytestring
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as B
@@ -114,7 +112,10 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
+import qualified Codec.Compression.Zlib.Internal as ZlibInt
 import System.IO.Error (isAlreadyExistsError)
+
+-- import Debug.Trace
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
@@ -796,40 +797,6 @@ getLocalFile = do
                  else fail "Content size mismatch in data descriptor record"
   return (fromIntegral offset, compressedData)
 
--- Move forward over data (not consuming it) until:
--- - start of the next local file header
--- - start of archive decryption header
--- Then back up 12 bytes (the data description record)
--- and possibly 4 more bytes
--- (conventional but not required sig 0x08074b50 for data description record).
-getCompressedData :: Get B.ByteString
-getCompressedData = do
-  numbytes <- lookAhead $ findEnd 0
-  getLazyByteString numbytes
- where
-   chunkSize :: Int64
-   chunkSize = 16384
-   findEnd :: Int64 -> Get Int64
-   findEnd n = do
-     sig <- lookAhead getWord32le
-     case sig of
-       0x08074b50 -> skip 4 >> return n
-       0x04034b50 -> -- sig for local file header
-        return (n - 12) -- rewind past data description
-       0x02014b50 -> -- sig for file header
-        return (n - 12) -- rewind past data description
-       0x06054b50 -> -- sig for end of central directory header
-        return (n - 12) -- rewind past data description
-       x | x .&. 0xFF == 0x50 -> skip 1 >> findEnd (n + 1)
-       _ -> do bs <- lookAhead $ getLazyByteString chunkSize
-                             <|> getRemainingLazyByteString
-               let bsLen = B.length bs
-               let mbIdx = B.elemIndex 0x50 bs
-               case mbIdx of
-                 Nothing -> skip (fromIntegral bsLen) >> findEnd (n + bsLen)
-                 Just 0  -> skip 1 >> findEnd (n + 1)
-                 Just idx -> skip (fromIntegral idx) >> findEnd (n + idx)
-
 putLocalFile :: Entry -> Put
 putLocalFile f = do
   putWord32le 0x04034b50
@@ -992,3 +959,33 @@ toString = TL.unpack . TL.decodeUtf8
 
 fromString :: String -> B.ByteString
 fromString = TL.encodeUtf8 . TL.pack
+
+data DecompressResult =
+    DecompressSuccess [S.ByteString] B.ByteString
+                       -- chunks in reverse, remainder
+  | DecompressFailure ZlibInt.DecompressError
+
+getCompressedData :: Get B.ByteString
+getCompressedData = do
+  remainingBytes <- lookAhead getRemainingLazyByteString
+  let result = ZlibInt.foldDecompressStreamWithInput
+                (\bs res ->
+                    case res of
+                      DecompressSuccess chunks remainder
+                        -> DecompressSuccess (bs:chunks) remainder
+                      x -> x)
+                (DecompressSuccess [])
+                DecompressFailure
+                (ZlibInt.decompressST ZlibInt.rawFormat
+                 ZlibInt.defaultDecompressParams{
+                     ZlibInt.decompressAllMembers = False })
+                remainingBytes
+  case result of
+    DecompressFailure err -> fail (show err)
+    DecompressSuccess _chunks afterCompressedBytes ->
+      -- Consume the compressed bytes; we don't do anything with
+      -- the decompressed chunks. We are just decompressing as a
+      -- way of finding where the compressed data ends.
+      getLazyByteString
+        (fromIntegral (B.length remainingBytes - B.length afterCompressedBytes))
+
