@@ -1,4 +1,19 @@
-zip-archive 0.4.3
+zip-archive 0.4.3.1
+
+  * Use streaming decompress to identify extent of compressed data (#66).
+    This fixes a problem that arises for local files with bit 3
+    of the general purpose bit flag set. In this case, we don't
+    get information up front about the size of the compressed
+    data.  So how do we know where the compressed data ends?
+    Previously, we tried to determine this by looking for the
+    signature of the data descriptor. But the data descriptor doesn't
+    always HAVE a signature, and it is also possible for signatures to
+    occur accidentally in the compressed data itself (#65).
+    Instead, we now use the streaming decompression interface from
+    zlib's Internal module to identify where the compressed data
+    ends. Fixes both #65 and #25.
+
+    zip-archive 0.4.3
 
   * Improve code for retrieving compressed data of unknown length (#63).
     Do not assume we'll have the signature 0x08074b50 that is
