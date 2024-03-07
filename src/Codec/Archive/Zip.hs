@@ -101,8 +101,6 @@ import Data.List (partition)
 import Data.Maybe (fromJust)
 #endif
 
-import GHC.Int (Int64)
-
 -- from bytestring
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as B
@@ -114,7 +112,10 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
+import qualified Codec.Compression.Zlib.Internal as ZlibInt
 import System.IO.Error (isAlreadyExistsError)
+
+-- import Debug.Trace
 
 manySig :: Word32 -> Get a -> Get [a]
 manySig sig p = do
@@ -768,7 +769,11 @@ getLocalFile = do
   getWord32le >>= ensure (== 0x04034b50)
   skip 2  -- version
   bitflag <- getWord16le
-  skip 2  -- compressionMethod
+  rawCompressionMethod <- getWord16le
+  compressionMethod <- case rawCompressionMethod of
+                        0 -> return NoCompression
+                        8 -> return Deflate
+                        _ -> fail $ "Unknown compression method " ++ show rawCompressionMethod
   skip 2  -- last mod file time
   skip 2  -- last mod file date
   skip 4  -- crc32
@@ -780,12 +785,13 @@ getLocalFile = do
   extraFieldLength <- getWord16le
   skip (fromIntegral fileNameLength)  -- filename
   skip (fromIntegral extraFieldLength) -- extra field
-  compressedData <- if bitflag .&. 0O10 == 0
+  compressedData <-
+    if bitflag .&. 0O10 == 0
       then getLazyByteString (fromIntegral compressedSize)
       else -- If bit 3 of general purpose bit flag is set,
            -- then we need to read until we get to the
            -- data descriptor record.
-           do raw <- getCompressedData
+           do raw <- getCompressedData compressionMethod
               sig <- lookAhead getWord32le
               when (sig == 0x08074b50) $ skip 4
               skip 4 -- crc32
@@ -793,42 +799,11 @@ getLocalFile = do
               skip 4 -- uncompressed size
               if fromIntegral cs == B.length raw
                  then return raw
-                 else fail "Content size mismatch in data descriptor record"
+                 else fail $ printf
+                       ("Content size mismatch in data descriptor record: "
+                         <> "expected %d, got %d bytes")
+                       cs (B.length raw)
   return (fromIntegral offset, compressedData)
-
--- Move forward over data (not consuming it) until:
--- - start of the next local file header
--- - start of archive decryption header
--- Then back up 12 bytes (the data description record)
--- and possibly 4 more bytes
--- (conventional but not required sig 0x08074b50 for data description record).
-getCompressedData :: Get B.ByteString
-getCompressedData = do
-  numbytes <- lookAhead $ findEnd 0
-  getLazyByteString numbytes
- where
-   chunkSize :: Int64
-   chunkSize = 16384
-   findEnd :: Int64 -> Get Int64
-   findEnd n = do
-     sig <- lookAhead getWord32le
-     case sig of
-       0x08074b50 -> skip 4 >> return n
-       0x04034b50 -> -- sig for local file header
-        return (n - 12) -- rewind past data description
-       0x02014b50 -> -- sig for file header
-        return (n - 12) -- rewind past data description
-       0x06054b50 -> -- sig for end of central directory header
-        return (n - 12) -- rewind past data description
-       x | x .&. 0xFF == 0x50 -> skip 1 >> findEnd (n + 1)
-       _ -> do bs <- lookAhead $ getLazyByteString chunkSize
-                             <|> getRemainingLazyByteString
-               let bsLen = B.length bs
-               let mbIdx = B.elemIndex 0x50 bs
-               case mbIdx of
-                 Nothing -> skip (fromIntegral bsLen) >> findEnd (n + bsLen)
-                 Just 0  -> skip 1 >> findEnd (n + 1)
-                 Just idx -> skip (fromIntegral idx) >> findEnd (n + idx)
 
 putLocalFile :: Entry -> Put
 putLocalFile f = do
@@ -992,3 +967,59 @@ toString = TL.unpack . TL.decodeUtf8
 
 fromString :: String -> B.ByteString
 fromString = TL.encodeUtf8 . TL.pack
+
+data DecompressResult =
+    DecompressSuccess [S.ByteString] B.ByteString
+                       -- chunks in reverse, remainder
+  | DecompressFailure ZlibInt.DecompressError
+
+getCompressedData :: CompressionMethod -> Get B.ByteString
+getCompressedData NoCompression = do
+  -- we assume there will be a signature on the data descriptor,
+  -- otherwise we have no way of identifying where the data ends!
+  -- The signature 0x08074b50 is commonly used but not required by spec.
+  let findSigPos = do
+        w1 <- getWord8
+        if w1 == 0x50
+           then do
+             w2 <- getWord8
+             if w2 == 0x4b
+                then do
+                  w3 <- getWord8
+                  if w3 == 0x07
+                     then do
+                       w4 <- getWord8
+                       if w4 == 0x08
+                          then (\x -> x - 4) <$> bytesRead
+                          else findSigPos
+                     else findSigPos
+                else findSigPos
+           else findSigPos
+  pos <- bytesRead
+  sigpos <- lookAhead findSigPos <|>
+              fail "getCompressedData can't find data descriptor signature"
+  let compressedBytes = sigpos - pos
+  getLazyByteString compressedBytes
+getCompressedData Deflate = do
+  remainingBytes <- lookAhead getRemainingLazyByteString
+  let result = ZlibInt.foldDecompressStreamWithInput
+                (\bs res ->
+                    case res of
+                      DecompressSuccess chunks remainder
+                        -> DecompressSuccess (bs:chunks) remainder
+                      x -> x)
+                (DecompressSuccess [])
+                DecompressFailure
+                (ZlibInt.decompressST ZlibInt.rawFormat
+                 ZlibInt.defaultDecompressParams{
+                     ZlibInt.decompressAllMembers = False })
+                remainingBytes
+  case result of
+    DecompressFailure err -> fail (show err)
+    DecompressSuccess _chunks afterCompressedBytes ->
+      -- Consume the compressed bytes; we don't do anything with
+      -- the decompressed chunks. We are just decompressing as a
+      -- way of finding where the compressed data ends.
+      getLazyByteString
+        (fromIntegral (B.length remainingBytes - B.length afterCompressedBytes))
+
