@@ -72,8 +72,9 @@ module Codec.Archive.Zip
 
 import Data.Time.Calendar ( toGregorian, fromGregorian )
 import Data.Time.Clock ( UTCTime(..) )
+import Data.Time.LocalTime ( TimeZone(..), TimeOfDay(..), timeToTimeOfDay,
+                             getTimeZone )
 import Data.Time.Clock.POSIX ( posixSecondsToUTCTime, utcTimeToPOSIXSeconds )
-import Data.Time.LocalTime ( TimeOfDay(..), timeToTimeOfDay )
 import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
@@ -85,7 +86,7 @@ import Text.Printf
 import System.FilePath
 import System.Directory
        (doesDirectoryExist, getDirectoryContents,
-        createDirectoryIfMissing, getModificationTime)
+        createDirectoryIfMissing, getModificationTime,)
 import Control.Monad ( when, unless, zipWithM_ )
 import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
@@ -315,7 +316,11 @@ readEntry opts path = do
                         return B.empty
                       else
                         B.fromStrict <$> S.readFile path
-  modEpochTime <- (floor . utcTimeToPOSIXSeconds) <$> getModificationTime path
+  modTime <- getModificationTime path
+  tzone <- getTimeZone modTime
+  let modEpochTime = -- UNIX time computed relative to LOCAL time zone! (#67)
+        floor (utcTimeToPOSIXSeconds modTime) +
+          fromIntegral (timeZoneMinutes tzone * 60)
   let entry = toEntry path' modEpochTime contents
 
   entryE <-
