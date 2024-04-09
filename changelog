@@ -1,3 +1,9 @@
+zip-archive 0.4.3.2
+
+  * readEntry: Fix computation of modification time (#67).
+    It should be a UNIX time (seconds since UNIX epoch), but
+    computed relative to the local time zone, not UTC.
+
 zip-archive 0.4.3.1
 
   * Use streaming decompress to identify extent of compressed data (#66).
