@@ -806,7 +806,7 @@ getLocalFile = do
                  then return raw
                  else fail $ printf
                        ("Content size mismatch in data descriptor record: "
-                         <> "expected %d, got %d bytes")
+                         ++ "expected %d, got %d bytes")
                        cs (B.length raw)
   return (fromIntegral offset, compressedData)
 
