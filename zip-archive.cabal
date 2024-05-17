@@ -50,7 +50,7 @@ flag executable
   Default:           False
 
 Library
-  Build-depends:     base >= 4.5 && < 5,
+  Build-depends:     base >= 4.11 && < 5,
                      pretty,
                      containers,
                      binary >= 0.7.2,
@@ -79,7 +79,7 @@ Executable zip-archive
     Buildable:       False
   Main-is:           Main.hs
   Hs-Source-Dirs:    .
-  Build-Depends:     base >= 4.5 && < 5,
+  Build-Depends:     base >= 4.11 && < 5,
                      directory >= 1.1,
                      bytestring >= 0.9.0,
                      zip-archive
