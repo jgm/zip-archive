@@ -39,11 +39,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Install recent cabal/ghc
-      uses: haskell/actions/setup@v1
-      with:
-        ghc-version: ${{ matrix.versions.ghc }}
-        cabal-version: ${{ matrix.versions.cabal }}
-
+    - name: Install cabal/ghc
+      run: |
+        ghcup install ghc --set ${{ matrix.versions.ghc }}
+        ghcup install cabal --set ${{ matrix.versions.cabal }}
     - name: Install dependencies
       run: |
           cabal v2-update
