@@ -26,8 +26,6 @@ Description:
    As an example of the use of the library, a standalone zip archiver and
    extracter is provided in the source distribution.
 Category:            Codec
-Tested-with:         GHC == 8.6.5, GHC == 8.8.1, GHC == 8.10.4, GHC == 9.0.1,
-                     GHC == 8.8.3, GHC == 9.2.1
 License:             BSD3
 License-file:        LICENSE
 Homepage:            http://github.com/jgm/zip-archive
