@@ -24,4 +24,4 @@ zip-archive is a better choice if you want to manipulate zip
 archives in "pure" contexts.
 
 As an example of the use of the library, a standalone zip archiver
-and extracter is provided in the source distribution.
+and extractor is provided in the source distribution.
