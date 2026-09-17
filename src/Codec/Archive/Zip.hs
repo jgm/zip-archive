@@ -93,6 +93,7 @@ import Control.Monad.ST.Lazy ( runST )
 import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
+import Data.Array.Unboxed ( UArray, listArray, (!) )
 import qualified Data.Map as M
 import qualified Data.Set as Set
 import Control.Applicative
@@ -612,11 +613,27 @@ pkwareDecryptByte keys@(_, _, key2) inB =
 -- | Update decryption keys after a decrypted byte
 pkwareUpdateKeys :: DecryptionCtx -> Word8 -> DecryptionCtx
 pkwareUpdateKeys (key0, key1, key2) inB =
-  let key0' = CRC32.crc32Update (key0 `xor` 0xffffffff) [inB] `xor` 0xffffffff
+  let key0' = pkwareCrc32Byte key0 inB
       key1' = (key1 + (key0' .&. 0xff)) * 134775813 + 1
       key1Byte = fromIntegral (key1' `shiftR` 24) :: Word8
-      key2' = CRC32.crc32Update (key2 `xor` 0xffffffff) [key1Byte] `xor` 0xffffffff
+      key2' = pkwareCrc32Byte key2 key1Byte
   in (key0', key1', key2')
+
+-- | One step of the raw (unconditioned) CRC32 used by the PKWARE
+-- key schedule, computed with a lookup table.
+pkwareCrc32Byte :: Word32 -> Word8 -> Word32
+pkwareCrc32Byte key b =
+  (key `shiftR` 8) `xor`
+    (pkwareCrcTable ! ((key `xor` fromIntegral b) .&. 0xff))
+
+-- | Standard CRC32 table (reflected, polynomial 0xedb88320).
+pkwareCrcTable :: UArray Word32 Word32
+pkwareCrcTable = listArray (0, 255) $ map crcEntry [0..255]
+  where
+    crcEntry n = iterate step n !! (8 :: Int)
+    step x = if odd x
+                then (x `shiftR` 1) `xor` 0xedb88320
+                else x `shiftR` 1
 
 -- | Calculate compression ratio for an entry (for verbose output).
 compressionRatio :: Entry -> Float
