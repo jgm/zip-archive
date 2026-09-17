@@ -79,7 +79,7 @@ import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
-import Data.List (nub, find, intercalate)
+import Data.List (find, intercalate)
 import Data.Int (Int64)
 import Data.Data (Data)
 import Data.Typeable (Typeable)
@@ -93,6 +93,7 @@ import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
 import qualified Data.Map as M
+import qualified Data.Set as Set
 import Control.Applicative
 #ifdef _WINDOWS
 import Data.Char (isLetter)
@@ -235,13 +236,16 @@ addEntryToArchive entry archive =
 -- | Deletes an entry from a zip archive.
 deleteEntryFromArchive :: FilePath -> Archive -> Archive
 deleteEntryFromArchive path archive =
-  archive { zEntries = [e | e <- zEntries archive
-                       , not (eRelativePath e `matches` path)] }
+  let path' = normalizePath path
+  in  archive { zEntries = [e | e <- zEntries archive
+                           , normalizePath (eRelativePath e) /= path'] }
 
 -- | Returns Just the zip entry with the specified path, or Nothing.
 findEntryByPath :: FilePath -> Archive -> Maybe Entry
 findEntryByPath path archive =
-  find (\e -> path `matches` eRelativePath e) (zEntries archive)
+  let path' = normalizePath path
+  in  find (\e -> path' == normalizePath (eRelativePath e))
+           (zEntries archive)
 
 -- | Returns uncompressed contents of zip entry.
 fromEntry :: Entry -> B.ByteString
@@ -499,13 +503,33 @@ addFilesToArchive :: [ZipOption] -> Archive -> [FilePath] -> IO Archive
 addFilesToArchive opts archive files = do
   filesAndChildren <- if OptRecursive `elem` opts
 #ifdef _WINDOWS
-                         then mapM getDirectoryContentsRecursive files >>= return . nub . concat
+                         then ordNub . concat <$> mapM getDirectoryContentsRecursive files
 #else
-                         then nub . concat <$> mapM (getDirectoryContentsRecursive' opts) files
+                         then ordNub . concat <$> mapM (getDirectoryContentsRecursive' opts) files
 #endif
                          else return files
   entries <- mapM (readEntry opts) filesAndChildren
-  return $ foldr addEntryToArchive archive entries
+  -- Equivalent to foldr addEntryToArchive archive entries (the first
+  -- entry for a given path wins, new entries precede old ones), but
+  -- without quadratic cost in the number of entries.
+  let newPaths = Set.fromList $ map (normalizePath . eRelativePath) entries
+  return archive
+    { zEntries = ordNubOn (normalizePath . eRelativePath) entries ++
+        [e | e <- zEntries archive
+           , normalizePath (eRelativePath e) `Set.notMember` newPaths] }
+
+-- Remove duplicates from a list, keeping the first occurrence of each
+-- element and preserving order.
+ordNub :: Ord a => [a] -> [a]
+ordNub = ordNubOn id
+
+ordNubOn :: Ord b => (a -> b) -> [a] -> [a]
+ordNubOn f = go Set.empty
+  where go _ [] = []
+        go seen (x:xs)
+          | fx `Set.member` seen = go seen xs
+          | otherwise            = x : go (Set.insert fx seen) xs
+          where fx = f x
 
 -- | Extract all files from an 'Archive', creating directories
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
@@ -546,10 +570,6 @@ normalizePath path =
       -- note: some versions of filepath return ["."] if no dir
       dirParts = filter (/=".") $ splitDirectories dir'
   in  intercalate "/" (dirParts ++ [fn])
-
--- Equality modulo normalization.  So, "./foo" `matches` "foo".
-matches :: FilePath -> FilePath -> Bool
-matches fp1 fp2 = normalizePath fp1 == normalizePath fp2
 
 -- | Uncompress a lazy bytestring.
 compressData :: CompressionMethod -> B.ByteString -> B.ByteString

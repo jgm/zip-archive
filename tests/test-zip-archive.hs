@@ -103,6 +103,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testFromToArchive
                                 , testReadWriteEntry
                                 , testAddFilesOptions
+                                , testAddFilesDedupe
                                 , testDeleteEntries
                                 , testExtractFiles
                                 , testExtractFilesFailOnEncrypted
@@ -196,6 +197,17 @@ testAddFilesOptions tmpDir = TestCase $ do
      (length (filesInArchive archive4) < length (filesInArchive archive3))
 #endif
 
+
+testAddFilesDedupe :: FilePath -> Test
+testAddFilesDedupe _tmpDir = TestCase $ do
+  -- adding the same file twice results in a single entry
+  archive <- addFilesToArchive [] emptyArchive ["LICENSE", "LICENSE"]
+  assertEqual "duplicate files are added once"
+    ["LICENSE"] (filesInArchive archive)
+  -- re-adding a file replaces the existing entry rather than duplicating it
+  archive2 <- addFilesToArchive [] archive ["LICENSE", "Setup.hs"]
+  assertEqual "re-adding a file replaces the entry"
+    ["LICENSE", "Setup.hs"] (filesInArchive archive2)
 
 testDeleteEntries :: FilePath -> Test
 testDeleteEntries _tmpDir = TestCase $ do
