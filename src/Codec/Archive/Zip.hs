@@ -32,7 +32,7 @@
 -- deflated entries with data descriptors are not affected.
 --
 -- As an example of the use of the library, a standalone zip archiver
--- and extracter, Zip.hs, is provided in the source distribution.
+-- and extractor, Zip.hs, is provided in the source distribution.
 --
 -- For more information on the format of zip archives, consult
 -- <http://www.pkware.com/documents/casestudies/APPNOTE.TXT>
@@ -633,7 +633,7 @@ decryptData password (PKWAREEncryption controlByte) s
 -- | PKWARE decryption context
 type DecryptionCtx = (Word32, Word32, Word32)
 
--- | An interation of the PKWARE decryption algorithm
+-- | An implementation of the PKWARE decryption algorithm
 pkwareDecryptByte :: DecryptionCtx -> Word8 -> (DecryptionCtx, Word8)
 pkwareDecryptByte keys@(_, _, key2) inB =
   let tmp = key2 .|. 2
