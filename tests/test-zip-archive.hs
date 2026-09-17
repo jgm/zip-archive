@@ -114,6 +114,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testFileNameEncodings
                                 , testZip64Limits
                                 , testExtremeTimestamps
+                                , testGeneralPurposeBitFlag
 #ifndef _WINDOWS
                                 , testTimestampRoundTrip
                                 , testExtractFilesWithPosixAttrs
@@ -221,6 +222,16 @@ testZip64Limits _tmpDir = TestCase $ do
     Left (Zip64NotSupported _) -> return ()
     Left err -> assertFailure $ "wrong exception for 65535 entries: " ++ show err
     Right _  -> assertFailure "fromArchive should have failed on 65535 entries"
+
+testGeneralPurposeBitFlag :: FilePath -> Test
+testGeneralPurposeBitFlag _tmpDir = TestCase $ do
+  -- we compress with zlib's default level, so the flag must not claim
+  -- maximum compression (bit 1); only bit 11 (UTF-8 names) is set
+  let bytes = fromArchive $ Archive [toEntry "a.txt" 0 (BLC.pack "hi")]
+                                    Nothing BL.empty
+  -- general purpose bit flag of the local file header is at offset 6
+  assertEqual "for general purpose bit flag"
+    [0x00, 0x08] (BL.unpack (BL.take 2 (BL.drop 6 bytes)))
 
 testExtremeTimestamps :: FilePath -> Test
 testExtremeTimestamps _tmpDir = TestCase $ do
