@@ -22,6 +22,15 @@
 -- read the most common zip archives, and the archives it produces should
 -- be readable by all standard unzip programs.
 --
+-- One known limitation: when parsing an archive whose local file
+-- headers defer sizes to a data descriptor (general purpose bit 3)
+-- and whose entries are stored without compression, the end of the
+-- entry data can only be found by scanning for the optional data
+-- descriptor signature @0x08074b50@.  Parsing such an archive can
+-- therefore fail (or truncate an entry) if that byte sequence occurs
+-- within the stored data itself.  Archives of this kind are rare;
+-- deflated entries with data descriptors are not affected.
+--
 -- As an example of the use of the library, a standalone zip archiver
 -- and extracter, Zip.hs, is provided in the source distribution.
 --
