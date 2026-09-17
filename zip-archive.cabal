@@ -43,7 +43,7 @@ Extra-Source-Files:  changelog
 
 Source-repository    head
   type:              git
-  location:          git://github.com/jgm/zip-archive.git
+  location:          https://github.com/jgm/zip-archive.git
 
 flag executable
   Description:       Build the Zip executable.
