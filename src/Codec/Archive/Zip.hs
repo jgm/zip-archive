@@ -110,6 +110,7 @@ import qualified Data.ByteString.Lazy.Char8 as C
 -- text
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
+import qualified Data.Text.Encoding.Error as TE
 
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
@@ -926,7 +927,7 @@ getFileHeader locals = do
                     Nothing -> fail $ "Unable to find data at offset " ++
                                         show relativeOffset
   return Entry
-            { eRelativePath            = toString fileName
+            { eRelativePath            = decodeFileName bitflag fileName
             , eCompressionMethod       = compressionMethod
             , eEncryptionMethod        = encryptionMethod
             , eLastModified            = msDOSDateTimeToEpochTime $
@@ -997,8 +998,33 @@ ensure p val =
      then return ()
      else fail "ensure not satisfied"
 
-toString :: B.ByteString -> String
-toString = TL.unpack . TL.decodeUtf8
+-- | Decode a file name from a zip archive according to the general
+-- purpose bit flag: if bit 11 is set, the name is UTF-8 encoded;
+-- otherwise the zip spec says it is encoded in IBM code page 437.
+-- Invalid UTF-8 is decoded leniently (invalid bytes are replaced by
+-- U+FFFD) rather than raising an exception, so that 'toArchiveOrFail'
+-- remains total.
+decodeFileName :: Word16 -> B.ByteString -> String
+decodeFileName bitflag fn
+  | testBit bitflag 11 = TL.unpack $ TL.decodeUtf8With TE.lenientDecode fn
+  | otherwise          = map cp437ToChar $ B.unpack fn
+
+cp437ToChar :: Word8 -> Char
+cp437ToChar w
+  | w < 128   = toEnum (fromIntegral w)
+  | otherwise = cp437table !! fromIntegral (w - 128)
+
+-- IBM code page 437, upper half (0x80 - 0xFF).
+cp437table :: String
+cp437table =
+  "\199\252\233\226\228\224\229\231\234\235\232\239\238\236\196\197\
+  \\201\230\198\244\246\242\251\249\255\214\220\162\163\165\8359\402\
+  \\225\237\243\250\241\209\170\186\191\8976\172\189\188\161\171\187\
+  \\9617\9618\9619\9474\9508\9569\9570\9558\9557\9571\9553\9559\9565\9564\9563\9488\
+  \\9492\9524\9516\9500\9472\9532\9566\9567\9562\9556\9577\9574\9568\9552\9580\9575\
+  \\9576\9572\9573\9561\9560\9554\9555\9579\9578\9496\9484\9608\9604\9612\9616\9600\
+  \\945\223\915\960\931\963\181\964\934\920\937\948\8734\966\949\8745\
+  \\8801\177\8805\8804\8992\8993\247\8776\176\8729\183\8730\8319\178\9632\160"
 
 fromString :: String -> B.ByteString
 fromString = TL.encodeUtf8 . TL.pack

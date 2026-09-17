@@ -6,6 +6,8 @@
 
 import Codec.Archive.Zip
 import Control.Monad (unless)
+import Data.Bits
+import Data.Word (Word8)
 import Control.Exception (try, catch, SomeException)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
@@ -17,7 +19,6 @@ import System.Exit
 import System.IO.Temp (withTempDirectory)
 
 #ifndef _WINDOWS
-import Data.Bits (shiftL, (.|.))
 import System.FilePath.Posix
 import System.Posix.Files
 import System.Process (rawSystem)
@@ -27,6 +28,30 @@ import System.FilePath.Windows
 
 -- define equality for Archives so timestamps aren't distinguished if they
 -- correspond to the same MSDOS datetime.
+-- build a minimal raw zip archive containing a single stored entry
+-- with empty contents (CRC32 = 0), a given general purpose bit flag,
+-- and the given raw file name bytes
+mkRawZip :: Int -> [Word8] -> BL.ByteString
+mkRawZip flag name = BL.pack (local ++ central ++ eocd)
+ where
+  n = length name
+  le16, le32 :: Int -> [Word8]
+  le16 x = [fromIntegral (x .&. 0xff), fromIntegral ((x `shiftR` 8) .&. 0xff)]
+  le32 x = le16 (x .&. 0xffff) ++ le16 ((x `shiftR` 16) .&. 0xffff)
+  local = [0x50,0x4b,0x03,0x04] ++ le16 20 ++ le16 flag ++ le16 0 -- stored
+          ++ le16 0 ++ le16 0x21          -- mod time/date (1980-01-01)
+          ++ le32 0 ++ le32 0 ++ le32 0   -- crc, csize, usize
+          ++ le16 n ++ le16 0 ++ name
+  central = [0x50,0x4b,0x01,0x02] ++ le16 20 ++ le16 20 ++ le16 flag
+          ++ le16 0 ++ le16 0 ++ le16 0x21
+          ++ le32 0 ++ le32 0 ++ le32 0
+          ++ le16 n ++ le16 0 ++ le16 0   -- name/extra/comment len
+          ++ le16 0 ++ le16 0 ++ le32 0   -- disk, int attrs, ext attrs
+          ++ le32 0                       -- local header offset
+          ++ name
+  eocd = [0x50,0x4b,0x05,0x06] ++ le16 0 ++ le16 0 ++ le16 1 ++ le16 1
+          ++ le32 (46 + n) ++ le32 (30 + n) ++ le16 0
+
 instance Eq Archive where
   (==) a1 a2 =  zSignature a1 == zSignature a2
              && zComment a1 == zComment a2
@@ -83,6 +108,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testIncorrectPasswordRead
                                 , testEvilPath
                                 , testAbsolutePath
+                                , testFileNameEncodings
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
@@ -170,6 +196,26 @@ testDeleteEntries _tmpDir = TestCase $ do
   let archive2 = deleteEntryFromArchive "LICENSE" archive1
   let archive3 = deleteEntryFromArchive "src" archive2
   assertEqual "for deleteFilesFromArchive" emptyArchive archive3
+
+testFileNameEncodings :: FilePath -> Test
+testFileNameEncodings _tmpDir = TestCase $ do
+  -- bit 11 clear: name is in IBM code page 437 (0x82 = 'é')
+  case toArchiveOrFail (mkRawZip 0 [0x82]) of
+    Left err -> assertFailure $ "could not parse CP437 archive: " ++ err
+    Right a  -> assertEqual "for CP437 file name" ["\233"] (filesInArchive a)
+  -- bit 11 set: name is UTF-8 ('é' = 0xC3 0xA9)
+  case toArchiveOrFail (mkRawZip 0x800 [0xc3, 0xa9]) of
+    Left err -> assertFailure $ "could not parse UTF-8 archive: " ++ err
+    Right a  -> assertEqual "for UTF-8 file name" ["\233"] (filesInArchive a)
+  -- bit 11 set but name is invalid UTF-8: decode leniently, don't crash
+  result <- try $ case toArchiveOrFail (mkRawZip 0x800 [0x82]) of
+                    Left err -> return [err]
+                    Right a  -> mapM (\f -> length f `seq` return f)
+                                     (filesInArchive a)
+              :: IO (Either SomeException [FilePath])
+  case result of
+    Left err -> assertFailure $ "invalid UTF-8 name raised: " ++ show err
+    Right fs -> assertEqual "for invalid UTF-8 file name" ["\65533"] fs
 
 testAbsolutePath :: FilePath -> Test
 testAbsolutePath tmpDir = TestCase $ do
