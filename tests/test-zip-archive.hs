@@ -147,6 +147,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testTruncatedEncryptedRead
                                 , testEvilPath
                                 , testAbsolutePath
+                                , testCRCMismatchLeavesFileIntact
                                 , testFileNameEncodings
                                 , testZip64Limits
                                 , testExtremeTimestamps
@@ -349,6 +350,25 @@ testAbsolutePath tmpDir = TestCase $ do
     Left err -> assertEqual "exception for absolute path"
                   (UnsafePath "/absolute/evil") err
     Right _  -> assertFailure "writeEntry should have failed on absolute path"
+
+testCRCMismatchLeavesFileIntact :: FilePath -> Test
+testCRCMismatchLeavesFileIntact tmpDir = TestCase $ do
+  let dest = tmpDir </> "crcdest"
+  createDirectoryIfMissing True dest
+  writeFile (dest </> "file.txt") "original"
+  let entry = (toEntry "file.txt" 0 (BLC.pack "corrupted contents"))
+                { eCRC32 = 0xdeadbeef }
+  result <- try (writeEntry [OptDestination dest] entry)
+              :: IO (Either ZipException ())
+  case result of
+    Left err -> assertEqual "exception for corrupt entry"
+                  (CRC32Mismatch (dest </> "file.txt")) err
+    Right _  -> assertFailure "writeEntry should have failed on a bad CRC"
+  original <- readFile (dest </> "file.txt")
+  assertEqual "pre-existing file left intact" "original" original
+  files <- getDirectoryContents dest
+  assertEqual "no leftover temporary files" ["file.txt"]
+    (filter (`notElem` [".", ".."]) files)
 
 testEvilPath :: FilePath -> Test
 testEvilPath _tmpDir = TestCase $ do

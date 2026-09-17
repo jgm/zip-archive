@@ -75,7 +75,7 @@ import Data.Time.Clock ( UTCTime(..) )
 import Data.Time.LocalTime ( TimeZone(..), TimeOfDay(..), timeToTimeOfDay,
                              getTimeZone )
 import Data.Time.Clock.POSIX ( posixSecondsToUTCTime, utcTimeToPOSIXSeconds )
-import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
+import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit, complement )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
@@ -87,11 +87,12 @@ import Text.Printf
 import System.FilePath
 import System.Directory
        (doesDirectoryExist, getDirectoryContents,
-        createDirectoryIfMissing, getModificationTime,)
-import Control.Monad ( when, unless, zipWithM_ )
+        createDirectoryIfMissing, getModificationTime,
+        renameFile, removeFile)
+import Control.Monad ( when, unless, zipWithM_, foldM )
 import Control.Monad.ST.Lazy ( runST )
 import qualified Control.Exception as E
-import System.IO ( stderr, hPutStrLn )
+import System.IO ( stderr, hPutStrLn, hClose, openBinaryTempFile )
 import qualified Data.Digest.CRC32 as CRC32
 import Data.Array.Unboxed ( UArray, listArray, (!) )
 import qualified Data.Map as M
@@ -100,7 +101,7 @@ import Control.Applicative
 #ifdef _WINDOWS
 import Data.Char (isLetter)
 #else
-import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink, FileStatus )
+import System.Posix.Files ( setFileTimes, setFileMode, setFileCreationMask, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink, FileStatus )
 import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
 import Data.Maybe (fromJust)
@@ -412,14 +413,35 @@ writeEntry opts entry = do
          hPutStrLn stderr $ case eCompressionMethod entry of
                                  Deflate       -> " inflating: " ++ path
                                  NoCompression -> "extracting: " ++ path
-       let uncompressedData = fromEntry entry
-       if eCRC32 entry == CRC32.crc32 uncompressedData
-          then B.writeFile path uncompressedData
-          else E.throwIO $ CRC32Mismatch path
+       -- Write the entry chunk by chunk while updating the CRC
+       -- incrementally, so the uncompressed data need not be held in
+       -- memory in full.  Write to a temporary file first and rename
+       -- it into place only if the CRC matches, so a pre-existing
+       -- file at the target path is left intact on a CRC mismatch.
+       (tmpPath, tmpHandle) <- openBinaryTempFile dir
+                                 (takeFileName path ++ ".tmp")
+       crc <- foldM (\k chunk -> do
+                        S.hPut tmpHandle chunk
+                        return (CRC32.crc32Update k chunk))
+                0 (B.toChunks (fromEntry entry))
+              `E.onException` (hClose tmpHandle >> removeFile tmpPath)
+       hClose tmpHandle
+       if crc == eCRC32 entry
+          then renameFile tmpPath path
+          else do
+            removeFile tmpPath
+            E.throwIO $ CRC32Mismatch path
 #ifndef _WINDOWS
+       -- openBinaryTempFile creates the file with mode 0600; restore
+       -- the default permissions the file would have had if written
+       -- directly, unless the entry carries its own mode bits.
        let modes = fromIntegral $ shiftR (eExternalFileAttributes entry) 16
-       when (eVersionMadeBy entry .&. 0xFF00 == 0x0300 &&
-         modes /= 0) $ setFileMode path modes
+       if eVersionMadeBy entry .&. 0xFF00 == 0x0300 && modes /= 0
+          then setFileMode path modes
+          else do
+            umask <- setFileCreationMask 0o022
+            _ <- setFileCreationMask umask
+            setFileMode path (0o666 .&. complement umask)
 #endif
   -- Note that last modified times are supported only for POSIX, not for
   -- Windows.
