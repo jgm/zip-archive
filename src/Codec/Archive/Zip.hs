@@ -80,6 +80,7 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
 import Data.List (nub, find, intercalate)
+import Data.Int (Int64)
 import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Text.Printf
@@ -187,6 +188,7 @@ data ZipException =
     CRC32Mismatch FilePath
   | UnsafePath FilePath
   | CannotWriteEncryptedEntry FilePath
+  | Zip64NotSupported String  -- ^ Data too large for the original zip format (which this library is limited to); the ZIP64 extension would be required
   deriving (Show, Typeable, Data, Eq)
 
 instance E.Exception ZipException
@@ -213,6 +215,9 @@ toArchiveOrFail bs = case decodeOrFail bs of
                            Right (_,_,x) -> Right x
 
 -- | Writes an 'Archive' structure to a raw zip archive (in a lazy bytestring).
+-- Throws a pure 'Zip64NotSupported' exception if the archive has 65535
+-- or more entries or is 4GB or larger, since this would require the
+-- (unsupported) ZIP64 extension.
 fromArchive :: Archive -> B.ByteString
 fromArchive = encode
 
@@ -256,6 +261,8 @@ isEncryptedEntry entry =
     _ -> False
 
 -- | Create an 'Entry' with specified file path, modification time, and contents.
+-- Throws a pure 'Zip64NotSupported' exception if the contents are too
+-- large to be represented without the (unsupported) ZIP64 extension.
 toEntry :: FilePath         -- ^ File path for entry
         -> Integer          -- ^ Modification time for entry (seconds since unix epoch)
         -> B.ByteString     -- ^ Contents of entry
@@ -270,7 +277,11 @@ toEntry path modtime contents =
            then (NoCompression, contents, uncompressedSize)
            else (Deflate, compressedData, compressedSize)
       crc32 = CRC32.crc32 contents
-  in  Entry { eRelativePath            = normalizePath path
+  in  if uncompressedSize >= 0xFFFFFFFF
+         then E.throw $ Zip64NotSupported $
+                path ++ ": entry of 4GB or more requires ZIP64"
+         else
+      Entry { eRelativePath            = normalizePath path
             , eCompressionMethod       = compressionMethod
             , eEncryptionMethod        = NoEncryption
             , eLastModified            = modtime
@@ -750,11 +761,16 @@ getArchive = do
 
 putArchive :: Archive -> Put
 putArchive archive = do
+  let numEntries = length $ zEntries archive
+  when (numEntries >= 0xFFFF) $
+    E.throw $ Zip64NotSupported "65535 or more entries require ZIP64"
   mapM_ putLocalFile $ zEntries archive
   let localFileSizes = map localFileSize $ zEntries archive
   let offsets = scanl (+) 0 localFileSizes
   let cdOffset = last offsets
-  _ <- zipWithM_ putFileHeader offsets (zEntries archive)
+  when (cdOffset >= 0xFFFFFFFF) $
+    E.throw $ Zip64NotSupported "archive of 4GB or more requires ZIP64"
+  _ <- zipWithM_ putFileHeader (map fromIntegral offsets) (zEntries archive)
   putDigitalSignature $ zSignature archive
   putWord32le 0x06054b50
   putWord16le 0 -- disk number
@@ -773,10 +789,12 @@ fileHeaderSize f =
     fromIntegral (B.length $ fromString $ normalizePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eFileComment f)
 
-localFileSize :: Entry -> Word32
+-- Note: computed as Int64 (not Word32) so that putArchive can detect
+-- offsets that would overflow the 32-bit fields of the zip format.
+localFileSize :: Entry -> Int64
 localFileSize f =
-  fromIntegral $ 4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 +
-    fromIntegral (B.length $ fromString $ normalizePath $ eRelativePath f) +
+  4 + 2 + 2 + 2 + 2 + 2 + 4 + 4 + 4 + 2 + 2 +
+    B.length (fromString $ normalizePath $ eRelativePath f) +
     B.length (eExtraField f) + B.length (eCompressedData f)
 
 -- Local file header:

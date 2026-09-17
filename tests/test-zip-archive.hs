@@ -8,7 +8,8 @@ import Codec.Archive.Zip
 import Control.Monad (unless)
 import Data.Bits
 import Data.Word (Word8)
-import Control.Exception (try, catch, SomeException)
+import Control.Exception (try, catch, evaluate, SomeException)
+import Data.Int (Int64)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -110,6 +111,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testEvilPath
                                 , testAbsolutePath
                                 , testFileNameEncodings
+                                , testZip64Limits
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
@@ -197,6 +199,25 @@ testDeleteEntries _tmpDir = TestCase $ do
   let archive2 = deleteEntryFromArchive "LICENSE" archive1
   let archive3 = deleteEntryFromArchive "src" archive2
   assertEqual "for deleteFilesFromArchive" emptyArchive archive3
+
+testZip64Limits :: FilePath -> Test
+testZip64Limits _tmpDir = TestCase $ do
+  -- an entry of 4GB or more cannot be represented without ZIP64
+  bigResult <- try $ evaluate $ toEntry "big" 0 (BL.replicate (2^(32 :: Int)) 0)
+                 :: IO (Either ZipException Entry)
+  case bigResult of
+    Left (Zip64NotSupported _) -> return ()
+    Left err -> assertFailure $ "wrong exception for 4GB entry: " ++ show err
+    Right _  -> assertFailure "toEntry should have failed on a 4GB entry"
+  -- an archive with 65535 or more entries cannot be represented without ZIP64
+  let e = toEntry "a" 0 BL.empty
+      manyEntries = Archive (replicate 65535 e) Nothing BL.empty
+  manyResult <- try $ evaluate $ BL.length $ fromArchive manyEntries
+                  :: IO (Either ZipException Int64)
+  case manyResult of
+    Left (Zip64NotSupported _) -> return ()
+    Left err -> assertFailure $ "wrong exception for 65535 entries: " ++ show err
+    Right _  -> assertFailure "fromArchive should have failed on 65535 entries"
 
 testFileNameEncodings :: FilePath -> Test
 testFileNameEncodings _tmpDir = TestCase $ do
