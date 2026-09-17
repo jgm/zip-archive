@@ -96,7 +96,7 @@ import Control.Applicative
 #ifdef _WINDOWS
 import Data.Char (isLetter)
 #else
-import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink )
+import System.Posix.Files ( setFileTimes, setFileMode, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink, FileStatus )
 import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
 import Data.Maybe (fromJust)
@@ -179,7 +179,7 @@ data ZipOption = OptRecursive               -- ^ Recurse into directories when a
                | OptVerbose                 -- ^ Print information to stderr
                | OptDestination FilePath    -- ^ Directory in which to extract
                | OptLocation FilePath !Bool -- ^ Where to place file when adding files and whether to append current path
-               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows.
+               | OptPreserveSymbolicLinks   -- ^ Preserve symbolic links as such. This option is ignored on Windows. WARNING: symbolic link targets are not validated on extraction, so they may be absolute or point outside of the destination directory; do not use this option when extracting untrusted archives.
                deriving (Read, Show, Eq)
 
 data ZipException =
@@ -412,6 +412,10 @@ writeEntry opts entry = do
 -- If the 'Entry' does not represent a symbolic link or
 -- the options do not contain 'OptPreserveSymbolicLinks`, this
 -- function behaves like `writeEntry`.
+--
+-- Note that the symbolic link target is written as is; it may be
+-- absolute or point outside of the extraction directory.  Do not
+-- extract untrusted archives with 'OptPreserveSymbolicLinks'.
 writeSymbolicLinkEntry :: [ZipOption] -> Entry -> IO ()
 writeSymbolicLinkEntry opts entry =
   if OptPreserveSymbolicLinks `notElem` opts
@@ -419,15 +423,37 @@ writeSymbolicLinkEntry opts entry =
      else do
         if isEntrySymbolicLink entry
            then do
+             let relpath = eRelativePath entry
+             checkPath relpath
              let prefixPath = case [d | OptDestination d <- opts] of
                                    (x:_) -> x
                                    _     -> ""
+             checkSymbolicLinkAncestry prefixPath relpath
              let targetPath = fromJust . symbolicLinkEntryTarget $ entry
-             let symlinkPath = prefixPath </> eRelativePath entry
+             let symlinkPath = prefixPath </> relpath
              when (OptVerbose `elem` opts) $ do
                hPutStrLn stderr $ "linking " ++ symlinkPath ++ " to " ++ targetPath
              forceSymLink targetPath symlinkPath
            else writeEntry opts entry
+
+-- Guard against symlink chaining on extraction: raise 'UnsafePath' if
+-- any directory component of relpath (relative to prefix) is itself a
+-- symbolic link.  Otherwise a crafted archive containing a symbolic
+-- link entry @a -> /somewhere@ followed by an entry @a/b@ could create
+-- a symbolic link outside of the destination directory.
+checkSymbolicLinkAncestry :: FilePath -> FilePath -> IO ()
+checkSymbolicLinkAncestry prefix relpath =
+  mapM_ check $ scanl1 (</>) ancestors
+  where
+    ancestors = case splitDirectories relpath of
+                     [] -> []
+                     cs -> init cs
+    check dir = do
+      res <- E.try (getSymbolicLinkStatus (prefix </> dir))
+                :: IO (Either E.IOException FileStatus)
+      case res of
+        Right st | isSymbolicLink st -> E.throwIO (UnsafePath relpath)
+        _                            -> return ()
 
 
 -- | Writes a symbolic link, but removes any conflicting files and retries if necessary.
@@ -473,7 +499,9 @@ addFilesToArchive opts archive files = do
 -- as needed.  If 'OptVerbose' is specified, print messages to stderr.
 -- Note that the last-modified time is set correctly only in POSIX,
 -- not in Windows.
--- This function fails if encrypted entries are present
+-- This function fails if encrypted entries are present.
+-- See the warning on 'OptPreserveSymbolicLinks' before using it
+-- with untrusted archives.
 extractFilesFromArchive :: [ZipOption] -> Archive -> IO ()
 extractFilesFromArchive opts archive = do
   let entries = zEntries archive

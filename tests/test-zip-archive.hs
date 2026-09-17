@@ -17,6 +17,7 @@ import System.Exit
 import System.IO.Temp (withTempDirectory)
 
 #ifndef _WINDOWS
+import Data.Bits (shiftL, (.|.))
 import System.FilePath.Posix
 import System.Posix.Files
 import System.Process (rawSystem)
@@ -33,6 +34,17 @@ instance Eq Archive where
                                            y { eLastModified = eLastModified y `div` 2  }) (zEntries a1) (zEntries a2))
 
 #ifndef _WINDOWS
+
+-- construct an Entry that represents a symbolic link, as found in
+-- archives produced by Info-ZIP and this library
+mkSymlinkEntry :: FilePath -> String -> Entry
+mkSymlinkEntry path target =
+  (toEntry path 0 (BLC.pack target))
+    { eRelativePath = path
+    , eVersionMadeBy = 0x0300 -- UNIX
+    , eExternalFileAttributes =
+        fromIntegral (shiftL (fromIntegral symbolicLinkMode .|. (0o777 :: Integer)) 16)
+    }
 
 createTestDirectoryWithSymlinks :: FilePath -> FilePath -> IO FilePath
 createTestDirectoryWithSymlinks prefixDir  baseDir = do
@@ -76,6 +88,8 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testArchiveExtractSymlinks
                                 , testExtractExternalZipWithSymlinks
                                 , testExtractOverwriteExternalZipWithSymlinks
+                                , testEvilSymlinkPath
+                                , testEvilSymlinkChain
 #endif
                                 ]
 #ifndef _WINDOWS
@@ -297,6 +311,45 @@ testExtractOverwriteExternalZipWithSymlinks tmpDir = TestCase $ do
       assertBool "Target directory exists" targetDirExists
       assertBool "Symbolic link to file is preserved" isFileSymlink
       assertBool "Target file exists" targetFileExists
+
+testEvilSymlinkPath :: FilePath -> Test
+testEvilSymlinkPath tmpDir = TestCase $ do
+  let dest = tmpDir </> "symlink-dest1"
+  createDirectoryIfMissing True dest
+  let entry = mkSymlinkEntry "../evil-link" "/tmp"
+  result <- try $ writeSymbolicLinkEntry
+                    [OptPreserveSymbolicLinks, OptDestination dest] entry
+              :: IO (Either ZipException ())
+  case result of
+    Left err -> assertEqual "exception for evil symlink path"
+                  (UnsafePath "../evil-link") err
+    Right _  -> assertFailure "writeSymbolicLinkEntry should have failed"
+  evilExists <- pathIsSymbolicLink (tmpDir </> "evil-link")
+                  `catch` (\(_ :: SomeException) -> return False)
+  assertBool "no symlink was created outside the destination" (not evilExists)
+
+testEvilSymlinkChain :: FilePath -> Test
+testEvilSymlinkChain tmpDir = TestCase $ do
+  let dest = tmpDir </> "symlink-dest2"
+  let outside = tmpDir </> "outside"
+  createDirectoryIfMissing True dest
+  createDirectoryIfMissing True outside
+  cwd <- getCurrentDirectory
+  -- first entry creates a symlink pointing outside the destination;
+  -- second entry tries to create a symlink through it
+  let archive = Archive [ mkSymlinkEntry "sub" (cwd </> outside)
+                        , mkSymlinkEntry "sub/inner" "anywhere"
+                        ] Nothing BL.empty
+  result <- try $ extractFilesFromArchive
+                    [OptPreserveSymbolicLinks, OptDestination dest] archive
+              :: IO (Either ZipException ())
+  case result of
+    Left err -> assertEqual "exception for chained symlink"
+                  (UnsafePath "sub/inner") err
+    Right _  -> assertFailure "extractFilesFromArchive should have failed"
+  innerExists <- pathIsSymbolicLink (outside </> "inner")
+                  `catch` (\(_ :: SomeException) -> return False)
+  assertBool "no symlink was created through another symlink" (not innerExists)
 
 testArchiveAndUnzip :: FilePath -> Test
 testArchiveAndUnzip tmpDir = TestCase $ do
