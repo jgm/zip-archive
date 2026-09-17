@@ -147,6 +147,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testTruncatedEncryptedRead
                                 , testEvilPath
                                 , testAbsolutePath
+                                , testDotFilePaths
                                 , testCRCMismatchLeavesFileIntact
                                 , testFileNameEncodings
                                 , testZip64Limits
@@ -350,6 +351,25 @@ testAbsolutePath tmpDir = TestCase $ do
     Left err -> assertEqual "exception for absolute path"
                   (UnsafePath "/absolute/evil") err
     Right _  -> assertFailure "writeEntry should have failed on absolute path"
+
+testDotFilePaths :: FilePath -> Test
+testDotFilePaths tmpDir = TestCase $ do
+  -- issue #55: dotfiles and names containing ".." as a substring are
+  -- legitimate and must not raise UnsafePath; only actual "." and
+  -- ".." path components are unsafe
+  let dest = tmpDir </> "dotdest"
+  let archive = foldr addEntryToArchive emptyArchive
+        [ toEntry ".bowerrc" 0 (BLC.pack "dot")
+        , toEntry "sub/Hello..ciao" 0 (BLC.pack "dots")
+        , toEntry "sub/.hidden/file.txt" 0 (BLC.pack "hidden")
+        ]
+  extractFilesFromArchive [OptDestination dest] archive
+  c1 <- readFile (dest </> ".bowerrc")
+  assertEqual "for contents of extracted dotfile" "dot" c1
+  c2 <- readFile (dest </> "sub/Hello..ciao")
+  assertEqual "for contents of file with dots in name" "dots" c2
+  c3 <- readFile (dest </> "sub/.hidden/file.txt")
+  assertEqual "for contents of file in hidden directory" "hidden" c3
 
 testCRCMismatchLeavesFileIntact :: FilePath -> Test
 testCRCMismatchLeavesFileIntact tmpDir = TestCase $ do
