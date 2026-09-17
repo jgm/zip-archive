@@ -620,6 +620,11 @@ data MSDOSDateTime = MSDOSDateTime { msDOSDate :: Word16
 minMSDOSDateTime :: Integer
 minMSDOSDateTime = 315532800
 
+-- | Epoch time corresponding to the maximum DOS DateTime (Dec 31 2107 23:59:58).
+maxMSDOSDateTime :: Integer
+maxMSDOSDateTime = floor $ utcTimeToPOSIXSeconds $
+  UTCTime (fromGregorian 2107 12 31) (23 * 3600 + 59 * 60 + 58)
+
 -- | Convert an epoch time to a MSDOS datetime.  Note that no time zone
 -- adjustment happens here: the epoch time is rendered as is, so callers
 -- are expected to pass times already shifted to the local time zone
@@ -628,6 +633,11 @@ epochTimeToMSDOSDateTime :: Integer -> MSDOSDateTime
 epochTimeToMSDOSDateTime epochtime | epochtime < minMSDOSDateTime =
   epochTimeToMSDOSDateTime minMSDOSDateTime
   -- if time is earlier than minimum DOS datetime, return minimum
+epochTimeToMSDOSDateTime epochtime | epochtime > maxMSDOSDateTime =
+  epochTimeToMSDOSDateTime maxMSDOSDateTime
+  -- if time is later than maximum DOS datetime, return maximum;
+  -- the year field of a DOS datetime cannot represent years past 2107,
+  -- and larger values would make toEnum fail below
 epochTimeToMSDOSDateTime epochtime =
   let
     UTCTime

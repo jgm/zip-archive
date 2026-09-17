@@ -113,6 +113,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testAbsolutePath
                                 , testFileNameEncodings
                                 , testZip64Limits
+                                , testExtremeTimestamps
 #ifndef _WINDOWS
                                 , testTimestampRoundTrip
                                 , testExtractFilesWithPosixAttrs
@@ -220,6 +221,19 @@ testZip64Limits _tmpDir = TestCase $ do
     Left (Zip64NotSupported _) -> return ()
     Left err -> assertFailure $ "wrong exception for 65535 entries: " ++ show err
     Right _  -> assertFailure "fromArchive should have failed on 65535 entries"
+
+testExtremeTimestamps :: FilePath -> Test
+testExtremeTimestamps _tmpDir = TestCase $ do
+  -- timestamps outside the representable MSDOS datetime range
+  -- (1980..2107) are clamped rather than crashing
+  let farFuture = toEntry "future.txt" 99999999999 (BLC.pack "later")
+      past = toEntry "past.txt" (-99999) (BLC.pack "earlier")
+      archive = Archive [farFuture, past] Nothing BL.empty
+  result <- try $ evaluate $ BL.length $ fromArchive archive
+              :: IO (Either SomeException Int64)
+  case result of
+    Left err -> assertFailure $ "fromArchive crashed: " ++ show err
+    Right _  -> return ()
 
 testFileNameEncodings :: FilePath -> Test
 testFileNameEncodings _tmpDir = TestCase $ do
