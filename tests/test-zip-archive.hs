@@ -70,6 +70,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testPasswordProtectedRead
                                 , testIncorrectPasswordRead
                                 , testEvilPath
+                                , testAbsolutePath
 #ifndef _WINDOWS
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
@@ -155,6 +156,19 @@ testDeleteEntries _tmpDir = TestCase $ do
   let archive2 = deleteEntryFromArchive "LICENSE" archive1
   let archive3 = deleteEntryFromArchive "src" archive2
   assertEqual "for deleteFilesFromArchive" emptyArchive archive3
+
+testAbsolutePath :: FilePath -> Test
+testAbsolutePath tmpDir = TestCase $ do
+  -- an entry with an absolute path must not escape OptDestination
+  -- (note that dest </> "/absolute/evil" == "/absolute/evil")
+  let entry = (toEntry "placeholder" 0 (BLC.pack "boom"))
+                { eRelativePath = "/absolute/evil" }
+  result <- try $ writeEntry [OptDestination (tmpDir </> "absdest")] entry
+              :: IO (Either ZipException ())
+  case result of
+    Left err -> assertEqual "exception for absolute path"
+                  (UnsafePath "/absolute/evil") err
+    Right _  -> assertFailure "writeEntry should have failed on absolute path"
 
 testEvilPath :: FilePath -> Test
 testEvilPath _tmpDir = TestCase $ do

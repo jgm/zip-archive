@@ -346,12 +346,15 @@ readEntry opts path = do
       compmethod (100 - (100 * compressionRatio entryE))
   return entryE
 
--- check path, resolving .. and . components, raising
--- UnsafePath exception if this takes you outside of the root.
+-- check path: reject absolute paths and drive-qualified paths, and
+-- resolve .. and . components, raising UnsafePath exception if this
+-- takes you outside of the root.
 checkPath :: FilePath -> IO ()
-checkPath fp =
-  maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
-    (resolve . splitDirectories $ fp)
+checkPath fp
+  | isAbsolute fp || hasDrive fp = E.throwIO (UnsafePath fp)
+  | otherwise =
+      maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
+        (resolve . splitDirectories $ fp)
   where
     resolve =
       fmap reverse . foldl go (return [])
@@ -375,9 +378,8 @@ writeEntry opts entry = do
   let relpath = eRelativePath entry
   checkPath relpath
   path <- case [d | OptDestination d <- opts] of
-             (x:_)                   -> return (x </> relpath)
-             [] | isAbsolute relpath -> E.throwIO $ UnsafePath relpath
-                | otherwise          -> return relpath
+             (x:_) -> return (x </> relpath)
+             []    -> return relpath
   -- create directories if needed
   let dir = takeDirectory path
   exists <- doesDirectoryExist dir
