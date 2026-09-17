@@ -150,7 +150,7 @@ data Entry = Entry
                { eRelativePath            :: FilePath            -- ^ Relative path, using '/' as separator
                , eCompressionMethod       :: !CompressionMethod   -- ^ Compression method
                , eEncryptionMethod        :: !EncryptionMethod    -- ^ Encryption method
-               , eLastModified            :: !Integer             -- ^ Modification time (seconds since unix epoch)
+               , eLastModified            :: !Integer             -- ^ Modification time (seconds since unix epoch, shifted by the local time zone offset: MSDOS timestamps in zip archives are conventionally local time)
                , eCRC32                   :: !Word32              -- ^ CRC32 checksum
                , eCompressedSize          :: !Word32              -- ^ Compressed size in bytes
                , eUncompressedSize        :: !Word32              -- ^ Uncompressed size in bytes
@@ -620,7 +620,10 @@ data MSDOSDateTime = MSDOSDateTime { msDOSDate :: Word16
 minMSDOSDateTime :: Integer
 minMSDOSDateTime = 315532800
 
--- | Convert a clock time to a MSDOS datetime.  The MSDOS time will be relative to UTC.
+-- | Convert an epoch time to a MSDOS datetime.  Note that no time zone
+-- adjustment happens here: the epoch time is rendered as is, so callers
+-- are expected to pass times already shifted to the local time zone
+-- (see 'readEntry' and 'setFileTimeStamp').
 epochTimeToMSDOSDateTime :: Integer -> MSDOSDateTime
 epochTimeToMSDOSDateTime epochtime | epochtime < minMSDOSDateTime =
   epochTimeToMSDOSDateTime minMSDOSDateTime
@@ -686,7 +689,13 @@ setFileTimeStamp :: FilePath -> Integer -> IO ()
 setFileTimeStamp _ _ = return () -- TODO: figure out how to set the timestamp on Windows
 #else
 setFileTimeStamp file epochtime = do
-  let epochtime' = fromInteger epochtime
+  -- eLastModified is relative to the LOCAL time zone (see readEntry
+  -- and #67), because MSDOS timestamps are conventionally local time.
+  -- Reverse that shift here, so that reading and extracting an entry
+  -- preserves the file's modification time.
+  tzone <- getTimeZone (posixSecondsToUTCTime (fromIntegral epochtime))
+  let epochtime' = fromInteger $
+        epochtime - fromIntegral (timeZoneMinutes tzone * 60)
   setFileTimes file epochtime' epochtime'
 #endif
 

@@ -10,6 +10,7 @@ import Data.Bits
 import Data.Word (Word8)
 import Control.Exception (try, catch, evaluate, SomeException)
 import Data.Int (Int64)
+import Data.Time.Clock (diffUTCTime)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -113,6 +114,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testFileNameEncodings
                                 , testZip64Limits
 #ifndef _WINDOWS
+                                , testTimestampRoundTrip
                                 , testExtractFilesWithPosixAttrs
                                 , testArchiveExtractSymlinks
                                 , testExtractExternalZipWithSymlinks
@@ -321,6 +323,19 @@ testIncorrectPasswordRead _tmpDir = TestCase $ do
               Nothing (fromEncryptedEntry "INCORRECT" f)
 
 #ifndef _WINDOWS
+
+testTimestampRoundTrip :: FilePath -> Test
+testTimestampRoundTrip tmpDir = TestCase $ do
+  let src = tmpDir </> "ts-src.txt"
+  writeFile src "timestamp"
+  srcTime <- getModificationTime src
+  entry <- readEntry [] src
+  let dest = tmpDir </> "ts-dest"
+  writeEntry [OptDestination dest] entry
+  destTime <- getModificationTime (dest </> src)
+  let diff = abs (realToFrac (diffUTCTime destTime srcTime)) :: Double
+  assertBool ("extracted mtime differs from original by " ++ show diff ++ "s")
+    (diff < 3) -- MSDOS timestamps have 2-second resolution
 
 testExtractFilesWithPosixAttrs :: FilePath -> Test
 testExtractFilesWithPosixAttrs tmpDir = TestCase $ do
