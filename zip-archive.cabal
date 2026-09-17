@@ -31,15 +31,15 @@ License-file:        LICENSE
 Homepage:            http://github.com/jgm/zip-archive
 Author:              John MacFarlane
 Maintainer:          jgm@berkeley.edu
-Extra-Source-Files:  changelog
-                     README.markdown
-                     tests/test4.zip
+Extra-Source-Files:  tests/test4.zip
                      tests/test4/a.txt
                      tests/test4/b.bin
                      "tests/test4/c/with spaces.txt"
                      tests/zip_with_symlinks.zip
                      tests/zip_with_password.zip
                      tests/zip_with_evil_path.zip
+Extra-Doc-Files:     changelog
+                     README.markdown
 
 Source-repository    head
   type:              git
