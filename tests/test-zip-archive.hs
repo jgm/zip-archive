@@ -106,6 +106,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testExtractFilesFailOnEncrypted
                                 , testPasswordProtectedRead
                                 , testIncorrectPasswordRead
+                                , testTruncatedEncryptedRead
                                 , testEvilPath
                                 , testAbsolutePath
                                 , testFileNameEncodings
@@ -279,6 +280,15 @@ testPasswordProtectedRead _tmpDir = TestCase $ do
               (isEncryptedEntry f)
             assertEqual "for contents of test.txt in archive"
               (Just $ BLC.pack "SUCCESS\n") (fromEncryptedEntry "s3cr3t" f)
+
+testTruncatedEncryptedRead :: FilePath -> Test
+testTruncatedEncryptedRead _tmpDir = TestCase $ do
+  -- encrypted data shorter than the 12-byte header must not crash
+  let entry = (toEntry "trunc.txt" 0 BL.empty)
+                { eEncryptionMethod = PKWAREEncryption 0
+                , eCompressedData = BLC.pack "short" }
+  assertEqual "for truncated encrypted entry"
+    Nothing (fromEncryptedEntry "password" entry)
 
 testIncorrectPasswordRead :: FilePath -> Test
 testIncorrectPasswordRead _tmpDir = TestCase $ do

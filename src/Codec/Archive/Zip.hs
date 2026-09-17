@@ -551,17 +551,20 @@ decompressData Deflate       = Zlib.decompress
 decompressData NoCompression = id
 
 -- | Decrypt a lazy bytestring
--- Returns Nothing if password is incorrect
+-- Returns Nothing if password is incorrect or the data is too short
+-- to contain the 12-byte encryption header
 decryptData :: String -> EncryptionMethod -> B.ByteString -> Maybe B.ByteString
 decryptData _ NoEncryption s = Just s
-decryptData password (PKWAREEncryption controlByte) s =
-  let headerlen = 12
-      initKeys = (305419896, 591751049, 878082192)
-      startKeys = B.foldl pkwareUpdateKeys initKeys (C.pack password)
-      (header, content) = B.splitAt headerlen $ snd $ B.mapAccumL pkwareDecryptByte startKeys s
-  in if B.last header == controlByte
-        then Just content
-        else Nothing
+decryptData password (PKWAREEncryption controlByte) s
+  | B.length s < headerlen = Nothing
+  | otherwise =
+      let initKeys = (305419896, 591751049, 878082192)
+          startKeys = B.foldl pkwareUpdateKeys initKeys (C.pack password)
+          (header, content) = B.splitAt headerlen $ snd $ B.mapAccumL pkwareDecryptByte startKeys s
+      in if B.last header == controlByte
+            then Just content
+            else Nothing
+  where headerlen = 12
 
 -- | PKWARE decryption context
 type DecryptionCtx = (Word32, Word32, Word32)
