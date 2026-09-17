@@ -89,6 +89,7 @@ import System.Directory
        (doesDirectoryExist, getDirectoryContents,
         createDirectoryIfMissing, getModificationTime,)
 import Control.Monad ( when, unless, zipWithM_ )
+import Control.Monad.ST.Lazy ( runST )
 import qualified Control.Exception as E
 import System.IO ( stderr, hPutStrLn )
 import qualified Data.Digest.CRC32 as CRC32
@@ -1089,12 +1090,6 @@ cp437table =
 fromString :: String -> B.ByteString
 fromString = TL.encodeUtf8 . TL.pack
 
-data DecompressResult =
-    DecompressSuccess B.ByteString -- bytes remaining
-      -- (we just discard decompressed chunks, because we only
-      -- want to know where the compressed data ends)
-  | DecompressFailure ZlibInt.DecompressError
-
 getCompressedData :: CompressionMethod -> Get B.ByteString
 getCompressedData NoCompression = do
   -- we assume there will be a signature on the data descriptor,
@@ -1124,20 +1119,39 @@ getCompressedData NoCompression = do
   getLazyByteString compressedBytes
 getCompressedData Deflate = do
   remainingBytes <- lookAhead getRemainingLazyByteString
-  let result = ZlibInt.foldDecompressStreamWithInput
-                (\_bs res -> res)
-                DecompressSuccess
-                DecompressFailure
-                (ZlibInt.decompressST ZlibInt.rawFormat
-                 ZlibInt.defaultDecompressParams{
-                     ZlibInt.decompressAllMembers = False })
-                remainingBytes
-  case result of
-    DecompressFailure err -> fail (show err)
-    DecompressSuccess afterCompressedBytes ->
-      -- Consume the compressed bytes; we don't do anything with
-      -- the decompressed chunks. We are just decompressing as a
-      -- way of finding where the compressed data ends.
-      getLazyByteString
-        (fromIntegral (B.length remainingBytes - B.length afterCompressedBytes))
+  -- We decompress (discarding the output) only as a way of finding
+  -- where the compressed data ends.
+  case countCompressedBytes remainingBytes of
+    Left err       -> fail (show err)
+    Right consumed -> getLazyByteString consumed
+
+-- Decompress the input chunk by chunk, discarding the decompressed
+-- output, and return the number of compressed bytes consumed (i.e.,
+-- where the deflate stream ends).  Feeding the decompressor chunk by
+-- chunk means we only ever force the compressed data itself, rather
+-- than computing the length of everything that follows it (which
+-- would force the entire rest of the archive).
+countCompressedBytes :: B.ByteString -> Either ZlibInt.DecompressError Int64
+countCompressedBytes input =
+    runST (go (B.toChunks input) 0
+              (ZlibInt.decompressST ZlibInt.rawFormat
+                ZlibInt.defaultDecompressParams{
+                    ZlibInt.decompressAllMembers = False }))
+  where
+    go chunks supplied stream =
+      case stream of
+        ZlibInt.DecompressInputRequired next ->
+          case chunks of
+            (c:cs) -> let supplied' = supplied + fromIntegral (S.length c)
+                      in  supplied' `seq` (next c >>= go cs supplied')
+            []     -> next S.empty >>= go [] supplied
+                        -- S.empty signals end of input; the
+                        -- decompressor then either ends cleanly or
+                        -- reports a truncated stream
+        ZlibInt.DecompressOutputAvailable _out next ->
+          next >>= go chunks supplied
+        ZlibInt.DecompressStreamEnd leftover ->
+          return $ Right $ supplied - fromIntegral (S.length leftover)
+        ZlibInt.DecompressStreamError err ->
+          return $ Left err
 

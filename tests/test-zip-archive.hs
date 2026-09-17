@@ -54,6 +54,41 @@ mkRawZip flag name = BL.pack (local ++ central ++ eocd)
   eocd = [0x50,0x4b,0x05,0x06] ++ le16 0 ++ le16 0 ++ le16 1 ++ le16 1
           ++ le32 (46 + n) ++ le32 (30 + n) ++ le16 0
 
+-- build a raw zip archive whose local file header uses a data
+-- descriptor (general purpose bit 3): sizes and CRC in the local
+-- header are zero and instead follow the file data
+mkDataDescriptorZip :: Entry -> BL.ByteString
+mkDataDescriptorZip e = BL.concat
+    [ BL.pack local, eCompressedData e, BL.pack descriptor
+    , BL.pack central, BL.pack eocd ]
+ where
+  name = map (fromIntegral . fromEnum) (eRelativePath e) :: [Word8]
+  n = length name
+  flag = 8 -- bit 3: data descriptor
+  method = case eCompressionMethod e of
+                NoCompression -> 0
+                Deflate       -> 8
+  crc = fromIntegral $ eCRC32 e
+  csize = fromIntegral $ eCompressedSize e
+  usize = fromIntegral $ eUncompressedSize e
+  le16, le32 :: Int -> [Word8]
+  le16 x = [fromIntegral (x .&. 0xff), fromIntegral ((x `shiftR` 8) .&. 0xff)]
+  le32 x = le16 (x .&. 0xffff) ++ le16 ((x `shiftR` 16) .&. 0xffff)
+  local = [0x50,0x4b,0x03,0x04] ++ le16 20 ++ le16 flag ++ le16 method
+          ++ le16 0 ++ le16 0x21
+          ++ le32 0 ++ le32 0 ++ le32 0   -- deferred to data descriptor
+          ++ le16 n ++ le16 0 ++ name
+  descriptor = [0x50,0x4b,0x07,0x08] ++ le32 crc ++ le32 csize ++ le32 usize
+  central = [0x50,0x4b,0x01,0x02] ++ le16 20 ++ le16 20 ++ le16 flag
+          ++ le16 method ++ le16 0 ++ le16 0x21
+          ++ le32 crc ++ le32 csize ++ le32 usize
+          ++ le16 n ++ le16 0 ++ le16 0
+          ++ le16 0 ++ le16 0 ++ le32 0
+          ++ le32 0
+          ++ name
+  eocd = [0x50,0x4b,0x05,0x06] ++ le16 0 ++ le16 0 ++ le16 1 ++ le16 1
+          ++ le32 (46 + n) ++ le32 (30 + n + csize + 16) ++ le16 0
+
 instance Eq Archive where
   (==) a1 a2 =  zSignature a1 == zSignature a2
              && zComment a1 == zComment a2
@@ -116,6 +151,7 @@ main = withTempDirectory "." "test-zip-archive." $ \tmpDir -> do
                                 , testZip64Limits
                                 , testExtremeTimestamps
                                 , testGeneralPurposeBitFlag
+                                , testDataDescriptor
 #ifndef _WINDOWS
                                 , testTimestampRoundTrip
                                 , testExtractFilesWithPosixAttrs
@@ -234,6 +270,29 @@ testZip64Limits _tmpDir = TestCase $ do
     Left (Zip64NotSupported _) -> return ()
     Left err -> assertFailure $ "wrong exception for 65535 entries: " ++ show err
     Right _  -> assertFailure "fromArchive should have failed on 65535 entries"
+
+testDataDescriptor :: FilePath -> Test
+testDataDescriptor _tmpDir = TestCase $ do
+  -- deflated entry whose sizes are only in a trailing data descriptor
+  let content = BLC.pack $ concat $ replicate 50 "all work and no play"
+      entry = toEntry "dd.txt" 0 content
+  assertEqual "test entry is deflated" Deflate (eCompressionMethod entry)
+  case toArchiveOrFail (mkDataDescriptorZip entry) of
+    Left err -> assertFailure $ "could not parse: " ++ err
+    Right a  -> case findEntryByPath "dd.txt" a of
+                     Nothing -> assertFailure "dd.txt not found in archive"
+                     Just e  -> assertEqual "for contents of dd.txt"
+                                  content (fromEntry e)
+  -- the same, for a stored entry (identified by descriptor signature)
+  let content' = BLC.pack "stored data"
+      entry' = (toEntry "dd2.txt" 0 content')
+  assertEqual "test entry is stored" NoCompression (eCompressionMethod entry')
+  case toArchiveOrFail (mkDataDescriptorZip entry') of
+    Left err -> assertFailure $ "could not parse: " ++ err
+    Right a  -> case findEntryByPath "dd2.txt" a of
+                     Nothing -> assertFailure "dd2.txt not found in archive"
+                     Just e  -> assertEqual "for contents of dd2.txt"
+                                  content' (fromEntry e)
 
 testGeneralPurposeBitFlag :: FilePath -> Test
 testGeneralPurposeBitFlag _tmpDir = TestCase $ do
