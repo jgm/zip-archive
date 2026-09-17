@@ -100,9 +100,9 @@ instance Eq Archive where
 -- construct an Entry that represents a symbolic link, as found in
 -- archives produced by Info-ZIP and this library
 mkSymlinkEntry :: FilePath -> String -> Entry
-mkSymlinkEntry path target =
-  (toEntry path 0 (BLC.pack target))
-    { eRelativePath = path
+mkSymlinkEntry linkPath target =
+  (toEntry linkPath 0 (BLC.pack target))
+    { eRelativePath = linkPath
     , eVersionMadeBy = 0x0300 -- UNIX
     , eExternalFileAttributes =
         fromIntegral (shiftL (fromIntegral symbolicLinkMode .|. (0o777 :: Integer)) 16)
