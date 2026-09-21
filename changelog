@@ -76,6 +76,8 @@ zip-archive 0.5
 
   * Remove stack.yaml.
 
+  * Change default-language to Haskell2010.
+
   * Depend on base >= 4.11.
 
 zip-archive 0.4.3.2
