@@ -379,7 +379,7 @@ readEntry opts path = do
 -- takes you outside of the root.
 checkPath :: FilePath -> IO ()
 checkPath fp
-  | isAbsolute fp || hasDrive fp = E.throwIO (UnsafePath fp)
+  | isAbsolute' fp || hasDrive fp = E.throwIO (UnsafePath fp)
   | otherwise =
       maybe (E.throwIO (UnsafePath fp)) (\_ -> return ())
         (resolve . splitDirectories $ fp)
@@ -395,6 +395,9 @@ checkPath fp
                     []     -> fail "outside of root path"
                     (_:ys) -> return ys
           _    -> return (x:xs)
+    -- ensure that /foo is absolute even on Windows:
+    isAbsolute' ('/':_) = True
+    isAbsolute' f = isAbsolute f
 
 -- | Writes contents of an 'Entry' to a file.  Throws a
 -- 'CRC32Mismatch' exception if the CRC32 checksum for the entry
