@@ -74,11 +74,9 @@ zip-archive 0.5
 
   * Fix spelling errors (@kianmeng, #69).
 
-  * Depend on base >= 4.11 and remove CI tests for ghc <= 8.2.
+  * Remove stack.yaml.
 
-  * CI: use windows-2022; windows-2019 is on longer available.
-
-  * CI: just test on last four ghc versions.
+  * Depend on base >= 4.11.
 
 zip-archive 0.4.3.2
 
