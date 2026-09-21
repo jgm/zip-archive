@@ -78,6 +78,8 @@ zip-archive 0.5
 
   * Change default-language to Haskell2010.
 
+  * Remove spurious dependencies (pretty, mtl).
+
   * Depend on base >= 4.11.
 
 zip-archive 0.4.3.2
