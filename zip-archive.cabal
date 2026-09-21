@@ -51,7 +51,6 @@ flag executable
 
 Library
   Build-depends:     base >= 4.11 && < 5,
-                     pretty,
                      containers,
                      binary >= 0.7.2,
                      zlib,
