@@ -1,3 +1,85 @@
+zip-archive 0.5
+
+  * Reject absolute and drive-qualified entry paths on extraction, even
+    when OptDestination is given. `checkPath` now throws UnsafePath for
+    absolute (and, on Windows, drive-qualified) paths regardless of options.
+
+  * Validate symbolic link entry paths on extraction.
+
+  * Decode file names per the UTF-8 flag, with CP437 fallback.
+    Previously file names were unconditionally decoded as UTF-8, so archives
+    with non-UTF-8 names raised an impure UnicodeException.
+    Now the general purpose bit flag is consulted: when bit 11 (language
+    encoding flag) is set, names are decoded as UTF-8 leniently (invalid
+    bytes become U+FFFD); otherwise they are decoded as code page 437 as
+    specified in APPNOTE.TXT appendix D.
+
+  * Return Nothing from `decryptData` on truncated encrypted data, instead
+    of raising an exception.
+
+  * Raise Zip64NotSupported instead of silently truncating on overflow.
+    The library does not support ZIP64, but nothing prevented writing
+    archives that would need it: toEntry truncated sizes of entries of 4GB
+    or more to Word32, and putArchive truncated entry counts (Word16) and
+    central directory offsets (Word32), silently producing corrupt output.
+    Add a Zip64NotSupported constructor to ZipException [API change]
+    and throw it (as a pure exception) from toEntry for oversized
+    entries and from putArchive for too many entries or too-large
+    archives. Local file offsets are now computed in Int64 so overflow
+    can actually be detected.
+
+  * Undo the local time zone shift when setting extracted file times.
+    `readEntry` stores `eLastModified` shifted by the local time
+    zone offset; ensure that this shift is reversed on extraction.
+
+  * Clamp DOS datetimes at the upper end of the representable range
+    (year 2108).
+
+  * Stop claiming maximum compression in the general purpose bit flag.
+    `compressData` uses zlib's default compression level, but the written
+    flag (0x802) had bit 1 set, which means the entry was deflated with
+    maximum compression. Write 0x800 (UTF-8 file names only) instead.
+
+  * Make `addFilesToArchive` near-linear in the number of files.
+    Large directory trees now dedupe via Data.Set on normalized paths,
+    preserving the previous semantics (first entry for a path wins,
+    new entries precede old ones).
+
+  * Avoid retaining the whole remaining archive in `getCompressedData`.
+    The raw deflate stream is fed to zlib's incremental `decompressST`
+    chunk by chunk, counting only the bytes actually consumed, so
+    memory use is proportional to the entry rather than to everything
+    after it.
+
+  * Use a CRC32 lookup table in the PKWARE key schedule.
+
+  * Stream extraction in `writeEntry` with an incremental CRC check.
+    writeEntry previously computed the CRC32 of the whole uncompressed
+    entry and then wrote it with B.writeFile; the reference to the
+    data across the CRC pass forced the entire entry to be retained in
+    memory. Now the entry is written chunk by chunk to a temporary
+    file in the target directory while the CRC is updated
+    incrementally, and the file is renamed into place only if the CRC
+    matches. As before, a pre-existing file at the target path is
+    left intact when the CRC check fails; the temporary file is
+    removed on mismatch or on any exception during writing.
+
+  * Encode each entry path once in `putLocalFile` and `putFileHeader`.
+    Previously both serializers normalized and UTF-8-encoded the entry
+    path twice: once for its length field and once for the path bytes.
+
+  * cabal: use extra-doc-files stanza.
+
+  * Add regression test for issue #55 (dotfile paths).
+
+  * Fix spelling errors (@kianmeng, #69).
+
+  * Depend on base >= 4.11 and remove CI tests for ghc <= 8.2.
+
+  * CI: use windows-2022; windows-2019 is on longer available.
+
+  * CI: just test on last four ghc versions.
+
 zip-archive 0.4.3.2
 
   * readEntry: Fix computation of modification time (#67).
@@ -19,7 +101,7 @@ zip-archive 0.4.3.1
     zlib's Internal module to identify where the compressed data
     ends. Fixes both #65 and #25.
 
-    zip-archive 0.4.3
+zip-archive 0.4.3
 
   * Improve code for retrieving compressed data of unknown length (#63).
     Do not assume we'll have the signature 0x08074b50 that is
