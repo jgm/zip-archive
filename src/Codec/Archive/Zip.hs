@@ -91,7 +91,6 @@ import Data.Binary.Put
 import Data.List (find, intercalate)
 import Data.Int (Int64)
 import Data.Data (Data)
-import Data.Typeable (Typeable)
 import Text.Printf
 import System.FilePath
 import System.Directory
@@ -202,7 +201,7 @@ data ZipException =
   | UnsafePath FilePath
   | CannotWriteEncryptedEntry FilePath
   | Zip64NotSupported String  -- ^ Data too large for the original zip format (which this library is limited to); the ZIP64 extension would be required
-  deriving (Show, Typeable, Data, Eq)
+  deriving (Show, Data, Eq)
 
 instance E.Exception ZipException
 
