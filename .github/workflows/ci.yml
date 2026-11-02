@@ -1,56 +1,14 @@
 name: CI tests
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  linux:
-
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        versions:
-          - ghc: '9.6'
-            cabal: 'latest'
-          - ghc: '9.8'
-            cabal: 'latest'
-          - ghc: '9.10'
-            cabal: 'latest'
-          - ghc: '9.12'
-            cabal: 'latest'
-    steps:
-    - uses: actions/checkout@v7
-    - name: Install cabal/ghc
-      run: |
-        ghcup install ghc --set ${{ matrix.versions.ghc }}
-        ghcup install cabal --set ${{ matrix.versions.cabal }}
-    - name: Install dependencies
-      run: |
-          cabal update
-          cabal build --dependencies-only --enable-tests --enable-benchmarks --disable-optimization -fexecutable all
-    - name: Build and test
-      run: |
-          cabal build --enable-tests --enable-benchmarks --disable-optimization -fexecutable all
-          cabal test --disable-optimization all
-
-  windows:
-
-    runs-on: windows-2022
-
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Install ghc
-      run: |
-        ghcup install ghc --set 9.10
-        ghcup install cabal --set latest
-
-    - name: Install dependencies
-      run: |
-          cabal update
-          cabal build --dependencies-only --enable-tests --enable-benchmarks --disable-optimization -fexecutable all
-    - name: Build and test
-      run: |
-          cabal build --enable-tests --enable-benchmarks --disable-optimization -fexecutable all
-          cabal test --disable-optimization all
-
+  ci:
+    uses: jgm/workflows/.github/workflows/haskell-ci.yml@main
+    with:
+      cabalopts: '-fexecutable -fserver'
