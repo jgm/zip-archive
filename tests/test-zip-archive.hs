@@ -5,12 +5,10 @@
 -- runghc Test.hs
 
 import Codec.Archive.Zip
-import Control.Monad (unless)
 import Data.Bits
 import Data.Word (Word8)
-import Control.Exception (try, catch, evaluate, SomeException)
+import Control.Exception (try, evaluate, SomeException)
 import Data.Int (Int64)
-import Data.Time.Clock (diffUTCTime)
 import System.Directory hiding (isSymbolicLink)
 import Test.HUnit.Base
 import Test.HUnit.Text
@@ -20,12 +18,15 @@ import qualified Data.ByteString.Lazy.Char8 as BLC
 import System.Exit
 import System.IO.Temp (withTempDirectory)
 
-#ifndef _WINDOWS
+#ifdef _WINDOWS
+import System.FilePath.Windows
+#else
 import System.FilePath.Posix
 import System.Posix.Files
 import System.Process (rawSystem)
-#else
-import System.FilePath.Windows
+import Control.Monad (unless)
+import Control.Exception (catch)
+import Data.Time.Clock (diffUTCTime)
 #endif
 
 -- define equality for Archives so timestamps aren't distinguished if they
@@ -200,7 +201,11 @@ testReadExternalZip _tmpDir = TestCase $ do
                       BL.empty (fromEntry f)
 
 testFromToArchive :: FilePath -> Test
+#ifdef _WINDOWS
+testFromToArchive _tmpDir = TestCase $ do
+#else
 testFromToArchive tmpDir = TestCase $ do
+#endif
   archive1 <- addFilesToArchive [OptRecursive] emptyArchive ["LICENSE", "src"]
   assertEqual "for (toArchive $ fromArchive archive)" archive1 (toArchive $ fromArchive archive1)
 #ifndef _WINDOWS
@@ -220,7 +225,11 @@ testReadWriteEntry tmpDir = TestCase $ do
   assertEqual "for readEntry -> writeEntry -> readEntry" entry entry''
 
 testAddFilesOptions :: FilePath -> Test
+#ifdef _WINDOWS
+testAddFilesOptions _tmpDir = TestCase $ do
+#else
 testAddFilesOptions tmpDir = TestCase $ do
+#endif
   archive1 <- addFilesToArchive [OptVerbose] emptyArchive ["LICENSE", "src"]
   archive2 <- addFilesToArchive [OptRecursive, OptVerbose] archive1 ["LICENSE", "src"]
   assertBool "for recursive and nonrecursive addFilesToArchive"
