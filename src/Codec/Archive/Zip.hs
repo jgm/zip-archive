@@ -84,7 +84,7 @@ import Data.Time.Clock ( UTCTime(..) )
 import Data.Time.LocalTime ( TimeZone(..), TimeOfDay(..), timeToTimeOfDay,
                              getTimeZone )
 import Data.Time.Clock.POSIX ( posixSecondsToUTCTime, utcTimeToPOSIXSeconds )
-import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit, complement )
+import Data.Bits ( shiftL, shiftR, (.&.), (.|.), xor, testBit )
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
@@ -109,6 +109,8 @@ import Control.Applicative
 #ifdef _WINDOWS
 import Data.Char (isLetter)
 #else
+import Data.Bits ( complement )
+import System.IO.Error (isAlreadyExistsError)
 import System.Posix.Files ( setFileTimes, setFileMode, setFileCreationMask, fileMode, getSymbolicLinkStatus, symbolicLinkMode, readSymbolicLink, isSymbolicLink, unionFileModes, createSymbolicLink, removeLink, FileStatus )
 import System.Posix.Types ( CMode(..) )
 import Data.List (partition)
@@ -128,7 +130,6 @@ import qualified Data.Text.Encoding.Error as TE
 -- from zlib
 import qualified Codec.Compression.Zlib.Raw as Zlib
 import qualified Codec.Compression.Zlib.Internal as ZlibInt
-import System.IO.Error (isAlreadyExistsError)
 
 -- import Debug.Trace
 
